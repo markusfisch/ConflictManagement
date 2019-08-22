@@ -729,7 +729,7 @@ function compileShader(src, type) {
 	gl.shaderSource(shader, src)
 	gl.compileShader(shader)
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		throw 'cannot compile shader'
+		throw gl.getShaderInfoLog(shader)
 	}
 	return shader
 }
@@ -740,7 +740,7 @@ function linkProgram(vs, fs) {
 	gl.attachShader(p, fs)
 	gl.linkProgram(p)
 	if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-		throw new Error(gl.getProgramInfoLog(p))
+		throw gl.getProgramInfoLog(p)
 	}
 	return p
 }
