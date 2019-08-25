@@ -875,6 +875,7 @@ function init() {
 
 	gl.enable(gl.DEPTH_TEST)
 	gl.enable(gl.BLEND)
+	gl.enable(gl.CULL_FACE)
 	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
 	W.onresize = resize

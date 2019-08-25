@@ -119,7 +119,7 @@ float decodeFloat(vec4 c) {
 
 void main() {
 	vec3 fragmentDepth = shadowPos.xyz;
-	fragmentDepth.z -= 0.014;
+	fragmentDepth.z -= 0.007;
 	float amountInLight = 0.0;
 	float texelDepth = decodeFloat(texture2D(shadowDepthTexture,
 			fragmentDepth.xy));
