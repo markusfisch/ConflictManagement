@@ -862,7 +862,7 @@ function setCamera() {
 
 function init() {
 	const canvas = D.getElementById('Canvas')
-	gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+	gl = canvas.getContext('webgl')
 
 	setCamera()
 	setLight()
