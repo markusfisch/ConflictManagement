@@ -39,32 +39,18 @@ uniform mat4 lightProjMat;
 uniform mat4 lightModelViewMat;
 
 void main() {
-	gl_Position = lightProjMat * lightModelViewMat * vec4(vertex, 1.0);
+	gl_Position = lightProjMat * lightModelViewMat * vec4(vertex, 1.);
 }
 </script>
 <script id="LightFragmentShader" type="x-shader/x-fragment">
 precision mediump float;
 
-vec4 encodeFloat(float depth) {
-	const vec4 bitShift = vec4(
-		256 * 256 * 256,
-		256 * 256,
-		256,
-		1.0
-	);
-	const vec4 bitMask = vec4(
-		0,
-		1.0 / 256.0,
-		1.0 / 256.0,
-		1.0 / 256.0
-	);
-	vec4 comp = fract(depth * bitShift);
-	comp -= comp.xxyz * bitMask;
-	return comp;
-}
-
 void main() {
-	gl_FragColor = encodeFloat(gl_FragCoord.z);
+	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
+	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
+	vec4 comp = fract(gl_FragCoord.z * bitShift);
+	comp -= comp.xxyz * bitMask;
+	gl_FragColor = comp;
 }
 </script>
 <script id="OffscreenVertexShader" type="x-shader/x-vertex">
@@ -79,17 +65,17 @@ varying mediump float z;
 varying vec4 shadowPos;
 
 const mat4 texUnitConverter = mat4(
-	0.5, 0.0, 0.0, 0.0,
-	0.0, 0.5, 0.0, 0.0,
-	0.0, 0.0, 0.5, 0.0,
-	0.5, 0.5, 0.5, 1.0
+	.5, .0, .0, .0,
+	.0, .5, .0, .0,
+	.0, .0, .5, .0,
+	.5, .5, .5, 1.
 );
 
 void main() {
 	gl_Position = projMat * modelViewMat * vec4(vertex, 1.);
 	z = gl_Position.z;
 	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat *
-		vec4(vertex, 1.0);
+		vec4(vertex, 1.);
 }
 </script>
 <script id="OffscreenFragmentShader" type="x-shader/x-fragment">
@@ -107,28 +93,17 @@ uniform sampler2D shadowDepthTexture;
 varying mediump float z;
 varying vec4 shadowPos;
 
+const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
 float decodeFloat(vec4 c) {
-	const vec4 bitShift = vec4(
-		1.0 / (256.0 * 256.0 * 256.0),
-		1.0 / (256.0 * 256.0),
-		1.0 / 256.0,
-		1
-	);
 	return dot(c, bitShift);
 }
 
 void main() {
-	vec3 fragmentDepth = shadowPos.xyz;
-	fragmentDepth.z -= 0.007;
-	float amountInLight = 0.0;
-	float texelDepth = decodeFloat(texture2D(shadowDepthTexture,
-			fragmentDepth.xy));
-	if (fragmentDepth.z < texelDepth) {
-		amountInLight = 1.0;
-	}
-	float f = z / far;
+	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
+	float light = .75 + step(shadowPos.z - .007, depth) * .25;
+	float fog = z / far;
 	gl_FragColor = vec4(
-		(1. - f) * color.rgb * (.75 + amountInLight * .3) + f * sky.rgb,
+		(1. - fog) * color.rgb * light + fog * sky.rgb,
 		color.a);
 }
 </script>
