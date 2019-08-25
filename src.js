@@ -431,7 +431,7 @@ function v3len(x, y, z) {
 	return M.sqrt(x*x + y*y + z*z)
 }
 
-function findEntityFromViewportCoordinates(x, y) {
+function pickEntity(x, y) {
 	// normalised device space
 	const dx = (2 * x) / width - 1,
 		dy = 1 - (2 * y) / height,
@@ -504,7 +504,7 @@ function setPointer(event, down) {
 	}
 
 	if (down) {
-		findEntityFromViewportCoordinates(pointersX[0], pointersY[0])
+		pickEntity(pointersX[0], pointersY[0])
 
 		// map to WebGL coordinates
 		for (let i = pointersLength; i--;) {
