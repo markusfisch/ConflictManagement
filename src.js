@@ -667,12 +667,27 @@ function createEntities() {
 		selectable: true,
 		color: [1, 1, 1, 1],
 		update: function(now) {
+			translate(this.matrix, this.origin, 0, M.sin(now * .001) * 2, 0)
+			rotate(this.matrix, this.matrix, now * .001, 1, 1, 0)
+		}
+	})
+
+	mat = new FA(idMat)
+	translate(mat, mat, -3, 1.5, 0)
+	scale(mat, mat, .5, .5, .5)
+	entities.push({
+		origin: mat,
+		matrix: new FA(mat),
+		model: cubeModel,
+		selectable: true,
+		color: [0, 1, 1, 1],
+		update: function(now) {
 			rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
 		}
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 2.5, 1.5, 0)
+	translate(mat, mat, 3.5, 1.5, 0)
 	rotate(mat, mat, .5, 0, 1, 0)
 	scale(mat, mat, .5, .5, .5)
 	entities.push({
@@ -683,7 +698,7 @@ function createEntities() {
 		color: [1, 0, 1, 1],
 		update: function(now) {
 			const m = new FA(idMat)
-			rotate(m, idMat, now * .001, 0, 1, 0)
+			rotate(m, idMat, now * .001, 1, 1, 0)
 			multiply(this.matrix, m, this.origin)
 		}
 	})
