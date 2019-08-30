@@ -334,6 +334,8 @@ function setCameraModel(uniforms, mm) {
 }
 
 function setShadowModel() {
+	// it's faster to execute empty functions instead of using a
+	// conditional statement thanks to branch prediction
 }
 
 function drawEntities(setModel, drawModel, uniforms, attribs) {
