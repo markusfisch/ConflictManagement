@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+readonly PRECISION=${PRECISION:-2}
+FACES=1
+echo 'const vertices = ['
+while read -r COMMAND A B C
+do
+	case "$COMMAND" in
+		v)
+			echo -n $'\t'
+			for N in "$A" "$B" "$C"
+			do
+				BEFORE=${N%%.*}
+				AFTER=${N##*.}
+				N="${BEFORE}.${AFTER:0:$PRECISION}"
+				if [ "$BEFORE" == '0' ] || [ "$BEFORE" == '-0' ]
+				then
+					if [[ "$AFTER" =~ ^[0]*$ ]]
+					then
+						N=0
+					else
+						N="${BEFORE%0*}.${N#*.}"
+					fi
+				elif [[ "$AFTER" =~ ^[0]*$ ]]
+				then
+					N=${N%.*}
+				fi
+				echo -n "$N,"
+			done
+			echo
+			;;
+		f)
+			((FACES)) && {
+				echo '], indicies = ['
+				FACES=0
+			}
+			echo -n $'\t'
+			for N in "$A" "$B" "$C"
+			do
+				N=${N%%/*}
+				echo -n "$((N - 1)),"
+			done
+			echo
+			;;
+	esac
+done
+echo ']'

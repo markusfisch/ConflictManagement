@@ -14,8 +14,11 @@ const M = Math,
 	modelViewMat = new FA(16),
 	findMat = new FA(16),
 	horizon = 50,
+	staticLightViewMat = new FA(16),
 	lightProjMat = new FA(idMat),
 	lightViewMat = new FA(idMat),
+	lightDirection = [0, 0, 0],
+	camPos = [0, 8, 7],
 	skyColor = [.06, .06, .06, 1],
 	offscreenWidth = 256,
 	offscreenHeight = 256,
@@ -41,7 +44,10 @@ let gl,
 	pointersLength,
 	pointersX = [],
 	pointersY = [],
-	keysDown = []
+	pointersXGl = [],
+	pointersYGl = [],
+	keysDown = [],
+	drag = {}
 
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
@@ -233,6 +239,44 @@ function translate(out, a, x, y, z) {
 	}
 }
 
+// from https://github.com/toji/gl-matrix
+function transpose(out, a) {
+	if (out === a) {
+		const a01 = a[1], a02 = a[2], a03 = a[3],
+			a12 = a[6], a13 = a[7], a23 = a[11]
+
+		out[1] = a[4]
+		out[2] = a[8]
+		out[3] = a[12]
+		out[4] = a01
+		out[6] = a[9]
+		out[7] = a[13]
+		out[8] = a02
+		out[9] = a12
+		out[11] = a[14]
+		out[12] = a03
+		out[13] = a13
+		out[14] = a23
+	} else {
+		out[0] = a[0]
+		out[1] = a[4]
+		out[2] = a[8]
+		out[3] = a[12]
+		out[4] = a[1]
+		out[5] = a[5]
+		out[6] = a[9]
+		out[7] = a[13]
+		out[8] = a[2]
+		out[9] = a[6]
+		out[10] = a[10]
+		out[11] = a[14]
+		out[12] = a[3]
+		out[13] = a[7]
+		out[14] = a[11]
+		out[15] = a[15]
+	}
+}
+
 function setOrthogonal(out, l, r, b, t, near, far) {
 	const lr = 1 / (l - r),
 		bt = 1 / (b - t),
@@ -289,27 +333,42 @@ function setCameraModel(uniforms, mm) {
 	gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
 	multiply(modelViewMat, viewMat, mm)
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
+	// the model matrix needs to be inverted and transposed to
+	// scale the normals correctly
+	invert(modelViewMat, mm)
+	transpose(modelViewMat, modelViewMat)
+	gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
 }
 
 function setShadowModel(uniforms, mm) {
 	multiply(modelViewMat, lightViewMat, mm)
 	gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
+	// the model matrix needs to be inverted and transposed to
+	// scale the normals correctly
+	invert(modelViewMat, mm)
+	transpose(modelViewMat, modelViewMat)
+	gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
 }
 
 function bindModel(attribs, model) {
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
 	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
+	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
+	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 }
 
 function drawEntities(setModel, drawModel, uniforms, attribs) {
 	for (let model, i = entitiesLength; i--;) {
-		const e = entities[i]
-		if (model != e.model) {
-			model = e.model
-			bindModel(attribs, model)
-		}
+		const e = entities[i], model = e.model, bones = e.bones
+		bindModel(attribs, model)
 		setModel(uniforms, e.matrix)
+		gl.uniformMatrix4fv(uniforms['bones[0]'], false, bones[0])
+		gl.uniformMatrix4fv(uniforms['bones[1]'], false, bones[1])
 		drawModel(model.count, uniforms, e.color)
 	}
 }
@@ -352,6 +411,7 @@ function drawCameraView() {
 
 	gl.uniformMatrix4fv(uniforms.projMat, false, projMat)
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
+	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 	gl.uniform4fv(uniforms.sky, skyColor)
 	gl.uniform1f(uniforms.far, horizon)
 
@@ -360,8 +420,14 @@ function drawCameraView() {
 	gl.uniform1i(uniforms.shadowDepthTexture, 0)
 
 	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.boneIndex)
+	gl.enableVertexAttribArray(attribs.boneWeight)
 	drawEntities(setCameraModel, drawCameraModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.boneIndex)
+	gl.disableVertexAttribArray(attribs.boneWeight)
 }
 
 function drawShadowMap() {
@@ -376,10 +442,17 @@ function drawShadowMap() {
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
+	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 
+	//gl.cullFace(gl.FRONT)
 	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.boneIndex)
+	gl.enableVertexAttribArray(attribs.boneWeight)
 	drawEntities(setShadowModel, drawShadowModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.boneIndex)
+	gl.disableVertexAttribArray(attribs.boneWeight)
+	gl.cullFace(gl.BACK)
 }
 
 function draw() {
@@ -402,36 +475,19 @@ function run() {
 	draw()
 }
 
-function raySphere(dx, dy, dz, rx, ry, rz, r) {
-	const b = rx*dx + ry*dy + rz*dz,
-		c = (dx*dx + dy*dy + dz*dz) - r*r,
-		d = b*b - c
-	// ray misses sphere
-	if (d < 0) {
-		return -1
+function rayGround(out, lx, ly, lz, dx, dy, dz) {
+	const denom = -1*dy
+	if (denom > .0001) {
+		const t = -1*-ly / denom
+		out[0] = lx + dx*t
+		out[1] = ly + dy*t
+		out[2] = lz + dz*t
+		return t >= 0
 	}
-	const sqd = M.sqrt(d),
-		ta = -b + sqd
-	// ray hitting front and back
-	if (d > 0) {
-		if (ta >= 0) {
-			return ta
-		}
-		const tb = -b - sqd
-		if (tb >= 0) {
-			return tb
-		}
-		return -1
-	}
-	// ray touching once
-	return d == 0 && ta >= 0 ? ta : -1
+	return false
 }
 
-function v3len(x, y, z) {
-	return M.sqrt(x*x + y*y + z*z)
-}
-
-function pickEntity(x, y) {
+function findGroundSpot(x, y) {
 	// normalised device space
 	const dx = (2 * x) / width - 1,
 		dy = 1 - (2 * y) / height,
@@ -457,80 +513,90 @@ function pickEntity(x, y) {
 	invert(findMat, viewMat)
 	const ox = findMat[12],
 		oy = findMat[13],
-		oz = findMat[14]
-	let closest = null,
-		closestDist = horizon
-	for (let i = entitiesLength; i--;) {
-		const e = entities[i]
-		if (!e.selectable) {
-			continue
-		}
-		const em = e.matrix,
-			ex = em[12],
-			ey = em[13],
-			ez = em[14],
-			sx = v3len(em[0], em[1], em[2]),
-			sy = v3len(em[4], em[5], em[6]),
-			sz = v3len(em[8], em[9], em[10]),
-			s = M.max(sx, M.max(sy, sz)),
-			// why ex-ox and not ox-ex?
-			t = raySphere(ex - ox, oy - ey, oz - ez, wx, wy, wz, s)
-		if (t >= 0 && t < closestDist) {
-			closestDist = t
-			closest = e
-		}
-	}
-	if (closest) {
-		closest.color[0] = M.random()
-		closest.color[1] = closest.color[2] = 0
+		oz = findMat[14],
+		ground = [0, 0, 0]
+	if (rayGround(ground, -ox, oy, oz, wx, wy, wz)) {
+		const marker = entities[3]
+		translate(marker.matrix, idMat, -ground[0], ground[1], ground[2])
+		scale(marker.matrix, marker.matrix, .5, .5, .5)
 	}
 }
 
 function setPointer(event, down) {
 	const touches = event.touches
-	if (!down) {
-		pointersLength = touches ? touches.length : 0
-	} else if (event.touches) {
+	if (touches) {
 		pointersLength = touches.length
 		for (let i = pointersLength; i--;) {
 			const t = touches[i]
 			pointersX[i] = t.pageX
 			pointersY[i] = t.pageY
 		}
+	} else if (!down) {
+		pointersLength = 0
 	} else {
 		pointersLength = 1
 		pointersX[0] = event.pageX
 		pointersY[0] = event.pageY
 	}
 
-	if (down) {
-		pickEntity(pointersX[0], pointersY[0])
-
-		// map to WebGL coordinates
-		for (let i = pointersLength; i--;) {
-			pointersX[i] = pointersX[i] * widthToGl - 1
-			pointersY[i] = -(pointersY[i] * heightToGl - ymax)
-		}
+	// map to WebGL coordinates
+	for (let i = pointersLength; i--;) {
+		pointersXGl[i] = pointersX[i] * widthToGl - 1
+		pointersYGl[i] = -(pointersY[i] * heightToGl - ymax)
 	}
 
-	event.preventDefault()
 	event.stopPropagation()
+}
+
+function dragCamera() {
+	const dx = pointersXGl[0] - drag.x,
+		dy = pointersYGl[0] - drag.y,
+		d = dx*dx + dy*dy,
+		f = 8
+	if (d > .001) {
+		lookAt(drag.cx + dx * f, drag.cz + dy * f)
+		drag.dragging = true
+	}
+}
+
+function stopDrag() {
+	drag.dragging = false
+}
+
+function startDrag() {
+	stopDrag()
+	drag.x = pointersXGl[0]
+	drag.y = pointersYGl[0]
+	invert(findMat, viewMat)
+	drag.cx = findMat[12] - camPos[0]
+	drag.cz = findMat[14] - camPos[2]
 }
 
 function pointerCancel(event) {
 	setPointer(event, false)
+	stopDrag()
 }
 
 function pointerUp(event) {
 	setPointer(event, false)
+	if (pointersLength > 0) {
+		startDrag()
+	} else {
+		if (!drag.dragging) {
+			findGroundSpot(pointersX[0], pointersY[0])
+		}
+		stopDrag()
+	}
 }
 
 function pointerMove(event) {
 	setPointer(event, pointersLength)
+	dragCamera()
 }
 
 function pointerDown(event) {
 	setPointer(event, true)
+	startDrag()
 }
 
 function setKey(event, down) {
@@ -560,12 +626,68 @@ function resize() {
 	setPerspective(projMat, M.PI * .125, width / height, .1, horizon)
 }
 
-function createModel(vertices, indicies) {
+function calculateNormals(vertices, indicies) {
+	const normals = []
+
+	for (let i = 0, l = indicies.length; i < l;) {
+		const a = indicies[i++] * 3,
+			b = indicies[i++] * 3,
+			c = indicies[i++] * 3,
+			x1 = vertices[a],
+			y1 = vertices[a + 1],
+			z1 = vertices[a + 2],
+			x2 = vertices[b],
+			y2 = vertices[b + 1],
+			z2 = vertices[b + 2],
+			x3 = vertices[c],
+			y3 = vertices[c + 1],
+			z3 = vertices[c + 2],
+			ux = x2 - x1,
+			uy = y2 - y1,
+			uz = z2 - z1,
+			vx = x3 - x1,
+			vy = y3 - y1,
+			vz = z3 - z1,
+			nx = uy * vz - uz * vy,
+			ny = uz * vx - ux * vz,
+			nz = ux * vy - uy * vx
+
+		normals[a] = nx
+		normals[a + 1] = ny
+		normals[a + 2] = nz
+
+		normals[b] = nx
+		normals[b + 1] = ny
+		normals[b + 2] = nz
+
+		normals[c] = nx
+		normals[c + 1] = ny
+		normals[c + 2] = nz
+	}
+
+	return normals
+}
+
+function createModel(vertices, indicies, boneIndex, boneWeight) {
 	const model = {count: indicies.length}
 
 	model.vertices = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
 	gl.bufferData(gl.ARRAY_BUFFER, new FA(vertices), gl.STATIC_DRAW)
+
+	model.normals = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
+	gl.bufferData(gl.ARRAY_BUFFER,
+		new FA(calculateNormals(vertices, indicies)),
+		gl.STATIC_DRAW)
+
+	model.boneIndex = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
+	gl.bufferData(gl.ARRAY_BUFFER, new FA(boneIndex), gl.STATIC_DRAW)
+
+	model.boneWeight = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
+	gl.bufferData(gl.ARRAY_BUFFER, new FA(boneWeight), gl.STATIC_DRAW)
 
 	model.indicies = gl.createBuffer()
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
@@ -606,7 +728,8 @@ function createCube() {
 		-1, 1, 1,
 		1, 1, 1,
 		-1, 1, -1,
-		1, 1, -1],[
+		1, 1, -1
+	],[
 		// front
 		0, 1, 3,
 		0, 3, 2,
@@ -624,12 +747,76 @@ function createCube() {
 		16, 19, 18,
 		// top
 		20, 21, 23,
-		20, 23, 22])
+		20, 23, 22
+	],[
+		// front
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 1,
+		// right
+		0, 0,
+		0, 0,
+		0, 1,
+		0, 0,
+		// back
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		// left
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		// bottom
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		// top
+		0, 0,
+		0, 1,
+		0, 0,
+		0, 0
+	],[
+		// front
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		// right
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		// back
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		// left
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		// bottom
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		// top
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5
+	])
 }
 
 function createEntities() {
 	entities = []
 
+	const defaultBones = [idMat, idMat]
 	const cubeModel = createCube()
 	let mat
 
@@ -639,6 +826,7 @@ function createEntities() {
 	entities.push({
 		matrix: new FA(mat),
 		model: cubeModel,
+		bones: defaultBones,
 		selectable: false,
 		color: [.1, .3, .7, 1]
 	})
@@ -650,6 +838,7 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
+		bones: defaultBones,
 		selectable: false,
 		color: [.2, .4, .8, 1],
 		update: function(now) {
@@ -664,6 +853,7 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
+		bones: defaultBones,
 		selectable: true,
 		color: [1, 1, 1, 1],
 		update: function(now) {
@@ -679,10 +869,13 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
+		bones: [new FA(idMat), new FA(idMat)],
 		selectable: true,
 		color: [0, 1, 1, 1],
 		update: function(now) {
-			rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
+			//rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
+			const t = M.abs(M.sin(now * .0005)) * 3
+			translate(this.bones[1], idMat, t, 0, t)
 		}
 	})
 
@@ -694,6 +887,7 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
+		bones: defaultBones,
 		selectable: true,
 		color: [1, 0, 1, 1],
 		update: function(now) {
@@ -767,22 +961,135 @@ function buildProgram(vertexSource, fragmentSource) {
 }
 
 function createPrograms() {
-	shadowProgram = buildProgram(
-		D.getElementById('LightVertexShader').textContent,
-		D.getElementById('LightFragmentShader').textContent)
-	cacheLocations(shadowProgram, ['vertex'],
-		['lightProjMat', 'lightModelViewMat'])
+	const precision = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif`, lightVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+attribute vec2 boneIndex;
+attribute vec2 boneWeight;
 
-	offscreenProgram = buildProgram(
-		D.getElementById('OffscreenVertexShader').textContent,
-		D.getElementById('OffscreenFragmentShader').textContent)
-	cacheLocations(offscreenProgram, ['vertex'], [
-		'projMat', 'modelViewMat', 'lightProjMat', 'lightModelViewMat',
-		'far', 'sky', 'color', 'shadowDepthTexture'])
+uniform mat4 lightProjMat;
+uniform mat4 lightModelViewMat;
+uniform vec3 lightDirection;
+uniform mat4 normalMat;
+uniform mat4 bones[2];
 
-	screenProgram = buildProgram(
-		D.getElementById('ScreenVertexShader').textContent,
-		D.getElementById('ScreenFragmentShader').textContent)
+varying float bias;
+
+void main() {
+	vec4 v = vec4(vertex, 1.);
+	v = ((bones[int(boneIndex.x)] * v) * boneWeight.x +
+			(bones[int(boneIndex.y)] * v) * boneWeight.y);
+	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
+		lightDirection));
+	bias = 0.01 * (1. - intensity);
+	gl_Position = lightProjMat * lightModelViewMat * vec4(v.xyz, 1.);
+}`, lightFragmentShader = `${precision}
+varying float bias;
+
+void main() {
+	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
+	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
+	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
+	comp -= comp.xxyz * bitMask;
+	gl_FragColor = comp;
+}`, offscreenVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+attribute vec2 boneIndex;
+attribute vec2 boneWeight;
+
+uniform mat4 projMat;
+uniform mat4 modelViewMat;
+uniform mat4 normalMat;
+uniform mat4 lightModelViewMat;
+uniform mat4 lightProjMat;
+uniform vec3 lightDirection;
+uniform mat4 bones[2];
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+const mat4 texUnitConverter = mat4(
+	.5, .0, .0, .0,
+	.0, .5, .0, .0,
+	.0, .0, .5, .0,
+	.5, .5, .5, 1.
+);
+
+void main() {
+	vec4 v = vec4(vertex, 1.);
+	v = ((bones[int(boneIndex.x)] * v) * boneWeight.x +
+			(bones[int(boneIndex.y)] * v) * boneWeight.y);
+	gl_Position = projMat * modelViewMat * vec4(v.xyz, 1.);
+	z = gl_Position.z;
+	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
+		lightDirection));
+	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat *
+		vec4(v.xyz, 1.);
+}`, offscreenFragmentShader = `${precision}
+uniform float far;
+uniform vec4 sky;
+uniform vec4 color;
+uniform sampler2D shadowDepthTexture;
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
+float decodeFloat(vec4 c) {
+	return dot(c, bitShift);
+}
+
+void main() {
+	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
+	float light = intensity > .0 ?
+		.75 + step(shadowPos.z, depth) * .25 :
+		1.;
+	float fog = z / far;
+	gl_FragColor = vec4(
+		(1. - fog) * color.rgb * light + fog * sky.rgb,
+		color.a);
+}`, screenVertexShader = `${precision}
+attribute vec2 vertex;
+attribute vec2 texturePos;
+
+varying vec2 textureUV;
+
+void main() {
+	gl_Position = vec4(vertex, 0., 1.);
+	textureUV = texturePos;
+}`, screenFragmentShader = `${precision}
+varying vec2 textureUV;
+
+uniform sampler2D offscreenTexture;
+
+void main() {
+	gl_FragColor = texture2D(offscreenTexture, textureUV.st);
+}`
+
+	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
+	cacheLocations(shadowProgram,
+		['vertex', 'normal', 'boneIndex', 'boneWeight'],
+		['lightProjMat', 'lightModelViewMat', 'normalMat', 'lightDirection',
+			'bones[0]', 'bones[1]'])
+
+	offscreenProgram = buildProgram(offscreenVertexShader,
+		offscreenFragmentShader)
+	cacheLocations(offscreenProgram,
+		['vertex', 'normal', 'boneIndex', 'boneWeight'],
+		['projMat', 'modelViewMat', 'normalMat',
+			'lightProjMat', 'lightModelViewMat', 'lightDirection',
+			'bones[0]', 'bones[1]', 'far', 'sky', 'color',
+			'shadowDepthTexture'])
+
+	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
 	cacheLocations(screenProgram, ['vertex', 'texturePos'],
 		['offscreenTexture'])
 }
@@ -864,23 +1171,32 @@ function createShadowBuffer() {
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 }
 
-function setLight() {
-	setOrthogonal(lightProjMat, -10, 10, -10, 10, -20, 40)
-	translate(lightViewMat, idMat, 0, 0, -35)
-	rotate(lightViewMat, lightViewMat, M.PI2, 1, 0, 0)
+function clamp(v, min, max) {
+	return M.max(min, M.min(max, v))
 }
 
-function setCamera() {
-	translate(viewMat, idMat, 0, 0, -10)
-	rotate(viewMat, viewMat, .9, 1, 0, 0)
+function lookAt(x, z) {
+	x = clamp(x, -10, 10)
+	z = clamp(z, -10, 10)
+
+	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
+	rotate(viewMat, viewMat, -.9, 1, 0, 0)
+	invert(viewMat, viewMat)
+
+	translate(lightViewMat, idMat, x, 35, z)
+	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
+	invert(lightViewMat, lightViewMat)
+	lightDirection[0] = lightViewMat[2]
+	lightDirection[1] = lightViewMat[6]
+	lightDirection[2] = lightViewMat[10]
 }
 
 function init() {
 	const canvas = D.getElementById('Canvas')
 	gl = canvas.getContext('webgl')
 
-	setCamera()
-	setLight()
+	setOrthogonal(lightProjMat, -10, 10, -10, 10, -20, 40)
+	lookAt(0, 0)
 
 	createShadowBuffer()
 	createOffscreenBuffer()
