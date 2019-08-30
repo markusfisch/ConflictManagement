@@ -329,46 +329,43 @@ function drawShadowModel(count) {
 }
 
 function setCameraModel(uniforms, mm) {
-	multiply(modelViewMat, lightViewMat, mm)
-	gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
 	multiply(modelViewMat, viewMat, mm)
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
-	// the model matrix needs to be inverted and transposed to
-	// scale the normals correctly
-	invert(modelViewMat, mm)
-	transpose(modelViewMat, modelViewMat)
-	gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
 }
 
-function setShadowModel(uniforms, mm) {
-	multiply(modelViewMat, lightViewMat, mm)
-	gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
-	// the model matrix needs to be inverted and transposed to
-	// scale the normals correctly
-	invert(modelViewMat, mm)
-	transpose(modelViewMat, modelViewMat)
-	gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
-}
-
-function bindModel(attribs, model) {
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
-	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
-	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+function setShadowModel() {
 }
 
 function drawEntities(setModel, drawModel, uniforms, attribs) {
 	for (let model, i = entitiesLength; i--;) {
-		const e = entities[i], model = e.model, bones = e.bones
-		bindModel(attribs, model)
-		setModel(uniforms, e.matrix)
+		const e = entities[i],
+			model = e.model,
+			bones = e.bones,
+			mm = e.matrix
+
+		// attribs & buffers
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
+		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
+		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
+		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
+		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+
+		// uniforms
+		setModel(uniforms, mm)
+		multiply(modelViewMat, lightViewMat, mm)
+		gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
+		// the model matrix needs to be inverted and transposed to
+		// scale the normals correctly
+		invert(modelViewMat, mm)
+		transpose(modelViewMat, modelViewMat)
+		gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
 		gl.uniformMatrix4fv(uniforms['bones[0]'], false, bones[0])
 		gl.uniformMatrix4fv(uniforms['bones[1]'], false, bones[1])
+
 		drawModel(model.count, uniforms, e.color)
 	}
 }
