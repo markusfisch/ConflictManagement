@@ -25,7 +25,7 @@ const M = Math,
 	shadowDepthTextureSize = 1024
 
 let gl,
-	shadowFramebuffer,
+	shadowBuffer,
 	shadowDepthTexture,
 	shadowProgram,
 	offscreenBuffer,
@@ -432,7 +432,7 @@ function drawShadowMap() {
 		uniforms = shadowProgram.uniforms
 
 	gl.useProgram(shadowProgram)
-	gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFramebuffer)
+	gl.bindFramebuffer(gl.FRAMEBUFFER, shadowBuffer)
 	gl.viewport(0, 0, shadowDepthTextureSize, shadowDepthTextureSize)
 	gl.clearColor(0, 0, 0, 1)
 	gl.clearDepth(1)
@@ -1091,6 +1091,41 @@ void main() {
 		['offscreenTexture'])
 }
 
+function createTexture(w, h) {
+	const texture = gl.createTexture()
+	gl.bindTexture(gl.TEXTURE_2D, texture)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
+		gl.UNSIGNED_BYTE, null)
+	return texture
+}
+
+function createFrameBuffer(w, h) {
+	const rb = gl.createRenderbuffer()
+	gl.bindRenderbuffer(gl.RENDERBUFFER, rb)
+	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h)
+
+	const tx = createTexture(w, h),
+		fb = gl.createFramebuffer()
+	gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+		gl.TEXTURE_2D, tx, 0)
+	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
+		gl.RENDERBUFFER, rb)
+
+	gl.bindTexture(gl.TEXTURE_2D, null)
+	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
+	return {
+		tx: tx,
+		fb: fb
+	}
+}
+
 function createScreenBuffer() {
 	screenVertexBuffer = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, screenVertexBuffer)
@@ -1109,63 +1144,22 @@ function createScreenBuffer() {
 			1, 1,
 			1, 0,
 			0, 1,
-			0, 0,
+			0, 0
 		]),
 		gl.STATIC_DRAW)
 }
 
 function createOffscreenBuffer() {
-	offscreenTexture = gl.createTexture()
-	gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, offscreenWidth,
-		offscreenHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
-
-	const renderBuffer = gl.createRenderbuffer()
-	gl.bindRenderbuffer(gl.RENDERBUFFER, renderBuffer)
-	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16,
-		offscreenWidth, offscreenHeight)
-
-	offscreenBuffer = gl.createFramebuffer()
-	gl.bindFramebuffer(gl.FRAMEBUFFER, offscreenBuffer)
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-		gl.TEXTURE_2D, offscreenTexture, 0)
-	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-		gl.RENDERBUFFER, renderBuffer)
-
-	gl.bindTexture(gl.TEXTURE_2D, null)
-	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+	const buf = createFrameBuffer(offscreenWidth, offscreenHeight)
+	offscreenTexture = buf.tx
+	offscreenBuffer = buf.fb
 }
 
 function createShadowBuffer() {
-	shadowDepthTexture = gl.createTexture()
-	gl.bindTexture(gl.TEXTURE_2D, shadowDepthTexture)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, shadowDepthTextureSize,
-		shadowDepthTextureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
-
-	const renderBuffer = gl.createRenderbuffer()
-	gl.bindRenderbuffer(gl.RENDERBUFFER, renderBuffer)
-	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16,
-		shadowDepthTextureSize, shadowDepthTextureSize)
-
-	shadowFramebuffer = gl.createFramebuffer()
-	gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFramebuffer)
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-		gl.TEXTURE_2D, shadowDepthTexture, 0)
-	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-		gl.RENDERBUFFER, renderBuffer)
-
-	gl.bindTexture(gl.TEXTURE_2D, null)
-	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+	const buf = createFrameBuffer(shadowDepthTextureSize,
+		shadowDepthTextureSize)
+	shadowDepthTexture = buf.tx
+	shadowBuffer = buf.fb
 }
 
 function clamp(v, min, max) {
