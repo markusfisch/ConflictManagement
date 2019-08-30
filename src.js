@@ -354,6 +354,8 @@ function drawEntities(setModel, drawModel, uniforms, attribs) {
 		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
 		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
 		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
+		gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
@@ -422,11 +424,13 @@ function drawCameraView() {
 	gl.enableVertexAttribArray(attribs.normal)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
+	gl.enableVertexAttribArray(attribs.texturePos)
 	drawEntities(setCameraModel, drawCameraModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
+	gl.disableVertexAttribArray(attribs.texturePos)
 }
 
 function drawShadowMap() {
@@ -443,15 +447,15 @@ function drawShadowMap() {
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 
-	//gl.cullFace(gl.FRONT)
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
+	gl.enableVertexAttribArray(attribs.texturePos)
 	drawEntities(setShadowModel, drawShadowModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
-	gl.cullFace(gl.BACK)
+	gl.disableVertexAttribArray(attribs.texturePos)
 }
 
 function draw() {
@@ -667,7 +671,7 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function createModel(vertices, indicies, boneIndex, boneWeight) {
+function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 	const model = {count: indicies.length}
 
 	model.vertices = gl.createBuffer()
@@ -693,7 +697,40 @@ function createModel(vertices, indicies, boneIndex, boneWeight) {
 	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicies),
 		gl.STATIC_DRAW)
 
+	model.uvs = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
+	gl.bufferData(gl.ARRAY_BUFFER,
+		uvs ? new FA(uvs) : new FA((vertices.length / 3) << 1),
+		gl.STATIC_DRAW)
+
 	return model
+}
+
+function createPlane() {
+	return createModel([
+		-1, 1, 1,
+		1, 1, 1,
+		-1, 1, -1,
+		1, 1, -1
+	],[
+		0, 1, 3,
+		0, 3, 2
+	],[
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0
+	],[
+		.5, .5,
+		.5, .5,
+		.5, .5,
+		.5, .5
+	],[
+		1, 1,
+		1, 0,
+		0, 1,
+		0, 0
+	])
 }
 
 function createCube() {
@@ -815,16 +852,17 @@ function createCube() {
 function createEntities() {
 	entities = []
 
-	const defaultBones = [idMat, idMat]
+	const planeModel = createPlane()
 	const cubeModel = createCube()
+	const defaultBones = [idMat, idMat]
 	let mat
 
 	mat = new FA(idMat)
 	translate(mat, mat, 0, -1, 0)
-	scale(mat, mat, 3000, .01, 3000)
+	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
-		model: cubeModel,
+		model: planeModel,
 		bones: defaultBones,
 		selectable: false,
 		color: [.1, .3, .7, 1]
@@ -970,6 +1008,7 @@ attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec2 boneIndex;
 attribute vec2 boneWeight;
+attribute vec2 texturePos;
 
 uniform mat4 lightProjMat;
 uniform mat4 lightModelViewMat;
@@ -978,6 +1017,7 @@ uniform mat4 normalMat;
 uniform mat4 bones[2];
 
 varying float bias;
+varying vec2 textureUV;
 
 void main() {
 	vec4 v = vec4(vertex, 1.);
@@ -986,7 +1026,9 @@ void main() {
 	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
 	bias = 0.01 * (1. - intensity);
-	gl_Position = lightProjMat * lightModelViewMat * vec4(v.xyz, 1.);
+	v.w = 1.;
+	gl_Position = lightProjMat * lightModelViewMat * v;
+	textureUV = texturePos;
 }`, lightFragmentShader = `${precision}
 varying float bias;
 
@@ -1001,6 +1043,7 @@ attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec2 boneIndex;
 attribute vec2 boneWeight;
+attribute vec2 texturePos;
 
 uniform mat4 projMat;
 uniform mat4 modelViewMat;
@@ -1013,6 +1056,7 @@ uniform mat4 bones[2];
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
+varying vec2 textureUV;
 
 const mat4 texUnitConverter = mat4(
 	.5, .0, .0, .0,
@@ -1029,8 +1073,8 @@ void main() {
 	z = gl_Position.z;
 	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
-	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat *
-		vec4(v.xyz, 1.);
+	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat * v;
+	textureUV = texturePos;
 }`, offscreenFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
@@ -1040,6 +1084,7 @@ uniform sampler2D shadowDepthTexture;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
+varying vec2 textureUV;
 
 const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
 float decodeFloat(vec4 c) {
@@ -1047,6 +1092,10 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
+	float grid = 1. / 30.;
+	grid = max(1.,
+		step(mod(textureUV.x, grid), grid * .95) +
+		step(mod(textureUV.y, grid), grid * .95));
 	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
 	float light = intensity > .0 ?
 		.75 + step(shadowPos.z, depth) * .25 :
@@ -1075,14 +1124,14 @@ void main() {
 
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight'],
-		['lightProjMat', 'lightModelViewMat', 'normalMat', 'lightDirection',
+		['vertex', 'normal', 'boneIndex', 'boneWeight', 'texturePos'],
+		['lightProjMat', 'lightModelViewMat', 'normalMat', 'lightModelViewMat',
 			'bones[0]', 'bones[1]'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight'],
+		['vertex', 'normal', 'boneIndex', 'boneWeight', 'texturePos'],
 		['projMat', 'modelViewMat', 'normalMat',
 			'lightProjMat', 'lightModelViewMat', 'lightDirection',
 			'bones[0]', 'bones[1]', 'far', 'sky', 'color',
