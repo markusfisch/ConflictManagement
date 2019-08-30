@@ -859,6 +859,7 @@ function createEntities() {
 
 	mat = new FA(idMat)
 	translate(mat, mat, 0, -1, 0)
+	rotate(mat, mat, .1, 0, 1, 0)
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
@@ -1092,10 +1093,11 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
-	float grid = 1. / 30.;
+	float grid = 1. / 50.;
+	float grid_threshold = grid * .95;
 	grid = max(1.,
-		step(mod(textureUV.x, grid), grid * .95) +
-		step(mod(textureUV.y, grid), grid * .95));
+		step(mod(textureUV.x, grid), grid_threshold) +
+		step(mod(textureUV.y, grid), grid_threshold));
 	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
 	float light = intensity > .0 ?
 		.75 + step(shadowPos.z, depth) * .25 :
