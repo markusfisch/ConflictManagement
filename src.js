@@ -467,8 +467,7 @@ function draw() {
 function update() {
 	const now = Date.now()
 	for (let i = entitiesLength; i--;) {
-		const e = entities[i]
-		e.update && e.update(now)
+		entities[i].update(now)
 	}
 }
 
@@ -936,6 +935,11 @@ function createEntities() {
 	})
 
 	entitiesLength = entities.length
+
+	for (let i = entitiesLength; i--;) {
+		const e = entities[i]
+		e.update = e.update || function() {}
+	}
 }
 
 function cacheUniformLocations(program, uniforms) {
