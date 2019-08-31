@@ -859,14 +859,14 @@ function createEntities() {
 
 	mat = new FA(idMat)
 	translate(mat, mat, 0, -1, 0)
-	rotate(mat, mat, .1, 0, 1, 0)
+	//rotate(mat, mat, .16, 0, 1, 0)
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
 		model: planeModel,
 		bones: defaultBones,
 		selectable: false,
-		color: [.1, .3, .7, 1]
+		color: [.3, .3, .3, 1]
 	})
 
 	mat = new FA(idMat)
@@ -1093,15 +1093,15 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
-	float grid = 1. / 50.;
-	float grid_threshold = grid * .95;
-	grid = max(1.,
-		step(mod(textureUV.x, grid), grid_threshold) +
-		step(mod(textureUV.y, grid), grid_threshold));
+	float grid = 1. / 30.;
+	float thresh = grid * .5;
+	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
+	grid = step(mod(textureUV.x + ym, grid), thresh);
 	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
 	float light = intensity > .0 ?
 		.75 + step(shadowPos.z, depth) * .25 :
 		1.;
+	light *= max(1. - grid, .85);
 	float fog = z / far;
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
