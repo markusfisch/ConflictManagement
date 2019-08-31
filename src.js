@@ -1093,7 +1093,7 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
-	float grid = 1. / 30.;
+	float grid = 1. / 20.;
 	float thresh = grid * .5;
 	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
 	grid = step(mod(textureUV.x + ym, grid), thresh);
