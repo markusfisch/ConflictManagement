@@ -18,7 +18,7 @@ const M = Math,
 	lightProjMat = new FA(idMat),
 	lightViewMat = new FA(idMat),
 	lightDirection = [0, 0, 0],
-	camPos = [0, 8, 7],
+	camPos = [0, 9, 7],
 	skyColor = [.06, .06, .06, 1],
 	offscreenWidth = 256,
 	offscreenHeight = 256,
@@ -519,7 +519,7 @@ function findGroundSpot(x, y) {
 		ground = [0, 0, 0]
 	if (rayGround(ground, -ox, oy, oz, wx, wy, wz)) {
 		const marker = entities[3]
-		translate(marker.matrix, idMat, -ground[0], ground[1], ground[2])
+		translate(marker.matrix, idMat, -ground[0], ground[1] + .5, ground[2])
 		scale(marker.matrix, marker.matrix, .5, .5, .5)
 	}
 }
@@ -857,8 +857,7 @@ function createEntities() {
 	let mat
 
 	mat = new FA(idMat)
-	translate(mat, mat, 0, -1, 0)
-	//rotate(mat, mat, .16, 0, 1, 0)
+	translate(mat, mat, 0, 0, 0)
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
@@ -869,7 +868,7 @@ function createEntities() {
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 0, .1, 0)
+	translate(mat, mat, 0, 1, 0)
 	scale(mat, mat, 3, .1, 3)
 	entities.push({
 		origin: mat,
@@ -884,7 +883,7 @@ function createEntities() {
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 0, 1, 0)
+	translate(mat, mat, 0, 2, 0)
 	scale(mat, mat, .5, .5, .5)
 	entities.push({
 		origin: mat,
@@ -894,13 +893,13 @@ function createEntities() {
 		selectable: true,
 		color: [1, 1, 1, 1],
 		update: function(now) {
-			translate(this.matrix, this.origin, 0, M.sin(now * .001) * 2, 0)
+			translate(this.matrix, this.origin, 0, 1 + M.sin(now * .001) * 2, 0)
 			rotate(this.matrix, this.matrix, now * .001, 1, 1, 0)
 		}
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, -3, 1.5, 0)
+	translate(mat, mat, -3, 2.5, 0)
 	scale(mat, mat, .5, .5, .5)
 	entities.push({
 		origin: mat,
@@ -917,7 +916,7 @@ function createEntities() {
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 3.5, 1.5, 0)
+	translate(mat, mat, 3.5, 2.5, 0)
 	rotate(mat, mat, .5, 0, 1, 0)
 	scale(mat, mat, .5, .5, .5)
 	entities.push({
