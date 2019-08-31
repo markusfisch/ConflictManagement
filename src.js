@@ -1029,7 +1029,7 @@ void main() {
 			(bones[int(boneIndex.y)] * v) * boneWeight.y);
 	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
-	bias = 0.01 * (1. - intensity);
+	bias = 0.001 * (1. - intensity);
 	v.w = 1.;
 	gl_Position = lightProjMat * lightModelViewMat * v;
 	textureUV = texturePos;
