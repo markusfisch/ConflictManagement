@@ -47,7 +47,8 @@ let gl,
 	pointersXGl = [],
 	pointersYGl = [],
 	keysDown = [],
-	drag = {}
+	drag = {},
+	marker
 
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
@@ -489,7 +490,7 @@ function rayGround(out, lx, ly, lz, dx, dy, dz) {
 	return false
 }
 
-function findGroundSpot(x, y) {
+function findGroundSpot(out, x, y) {
 	// normalised device space
 	const dx = (2 * x) / width - 1,
 		dy = 1 - (2 * y) / height,
@@ -515,13 +516,8 @@ function findGroundSpot(x, y) {
 	invert(findMat, viewMat)
 	const ox = findMat[12],
 		oy = findMat[13],
-		oz = findMat[14],
-		ground = [0, 0, 0]
-	if (rayGround(ground, -ox, oy, oz, wx, wy, wz)) {
-		const marker = entities[3]
-		translate(marker.matrix, idMat, -ground[0], ground[1] + .5, ground[2])
-		scale(marker.matrix, marker.matrix, .5, .5, .5)
-	}
+		oz = findMat[14]
+	return rayGround(out, -ox, oy, oz, wx, wy, wz)
 }
 
 function setPointer(event, down) {
@@ -579,13 +575,16 @@ function pointerCancel(event) {
 	stopDrag()
 }
 
+const ground = [0, 0, 0]
 function pointerUp(event) {
 	setPointer(event, false)
 	if (pointersLength > 0) {
 		startDrag()
 	} else {
-		if (!drag.dragging) {
-			findGroundSpot(pointersX[0], pointersY[0])
+		if (!drag.dragging &&
+				findGroundSpot(ground, pointersX[0], pointersY[0])) {
+			translate(marker.matrix, idMat, -ground[0], ground[1] + .5, ground[2])
+			scale(marker.matrix, marker.matrix, .5, .5, .5)
 		}
 		stopDrag()
 	}
@@ -857,15 +856,29 @@ function createEntities() {
 	let mat
 
 	mat = new FA(idMat)
-	translate(mat, mat, 0, 0, 0)
+	rotate(mat, mat, .16, 0, 1, 0)
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
 		model: planeModel,
 		bones: defaultBones,
-		selectable: false,
 		color: [.3, .3, .3, 1]
 	})
+
+	/*const size = 30, tiles = 10, step = size / tiles, tileSize = step * .5
+	for (let z = -size, i = 0; z <= size; z += step) {
+		for (let x = -size; x <= size; x += step) {
+			mat = new FA(idMat)
+			translate(mat, mat, x, .1, z)
+			scale(mat, mat, tileSize, .1, tileSize)
+			entities.push({
+				matrix: new FA(mat),
+				model: cubeModel,
+				bones: defaultBones,
+				color: [i++ & 1 ? .2 : .9, .4, .8, 1]
+			})
+		}
+	}*/
 
 	mat = new FA(idMat)
 	translate(mat, mat, 0, 1, 0)
@@ -875,7 +888,6 @@ function createEntities() {
 		matrix: new FA(mat),
 		model: cubeModel,
 		bones: defaultBones,
-		selectable: false,
 		color: [.2, .4, .8, 1],
 		update: function(now) {
 			rotate(this.matrix, this.origin, -now * .0005, 0, 1, 0)
@@ -890,7 +902,6 @@ function createEntities() {
 		matrix: new FA(mat),
 		model: cubeModel,
 		bones: defaultBones,
-		selectable: true,
 		color: [1, 1, 1, 1],
 		update: function(now) {
 			translate(this.matrix, this.origin, 0, 1 + M.sin(now * .001) * 2, 0)
@@ -901,12 +912,11 @@ function createEntities() {
 	mat = new FA(idMat)
 	translate(mat, mat, -3, 2.5, 0)
 	scale(mat, mat, .5, .5, .5)
-	entities.push({
+	entities.push(marker = {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
 		bones: [new FA(idMat), new FA(idMat)],
-		selectable: true,
 		color: [0, 1, 1, 1],
 		update: function(now) {
 			//rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
@@ -924,7 +934,6 @@ function createEntities() {
 		matrix: new FA(mat),
 		model: cubeModel,
 		bones: defaultBones,
-		selectable: true,
 		color: [1, 0, 1, 1],
 		update: function(now) {
 			const m = new FA(idMat)
