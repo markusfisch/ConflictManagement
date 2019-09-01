@@ -1101,7 +1101,7 @@ void main() {
 	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
 	grid = step(mod(textureUV.x + ym, grid), thresh);
 	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
-	float light = intensity > .0 ?
+	float light = intensity > .01 ?
 		.75 + step(shadowPos.z, depth) * .25 :
 		1.;
 	light *= max(1. - grid, .85);
