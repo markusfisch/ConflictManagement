@@ -493,19 +493,15 @@ function rayGround(out, lx, ly, lz, dx, dy, dz) {
 function findGroundSpot(out, x, y) {
 	// normalised device space
 	const dx = (2 * x) / width - 1,
-		dy = 1 - (2 * y) / height,
-		dz = -1,
-		dw = 1
+		dy = 1 - (2 * y) / height
 	// camera space
 	invert(findMat, projMat)
-	const cx = findMat[0]*dx + findMat[1]*dy + findMat[2]*dz + findMat[3]*dw,
-		cy = findMat[4]*dx + findMat[5]*dy + findMat[6]*dz + findMat[7]*dw,
-		cz = -1,
-		cw = 0
+	const cx = findMat[0]*dx + findMat[1]*dy + -findMat[2] + findMat[3],
+		cy = findMat[4]*dx + findMat[5]*dy + -findMat[6] + findMat[7]
 	// world space
-	let wx = viewMat[0]*cx + viewMat[1]*cy + viewMat[2]*cz + viewMat[3]*cw,
-		wy = viewMat[4]*cx + viewMat[5]*cy + viewMat[6]*cz + viewMat[7]*cw,
-		wz = viewMat[8]*cx + viewMat[9]*cy + viewMat[10]*cz + viewMat[11]*cw,
+	let wx = viewMat[0]*cx + viewMat[1]*cy + -viewMat[2],
+		wy = viewMat[4]*cx + viewMat[5]*cy + -viewMat[6],
+		wz = viewMat[8]*cx + viewMat[9]*cy + -viewMat[10],
 		len = wx*wx + wy*wy + wz*wz
 	if (len > 0) {
 		len = 1 / M.sqrt(len)
