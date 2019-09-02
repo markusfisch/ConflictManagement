@@ -496,21 +496,21 @@ function findGroundSpot(out, pointerX, pointerY) {
 		ny = 1 - (2 * pointerY) / height
 	// camera space
 	invert(findMat, projMat)
-	const cx = findMat[0]*nx + findMat[1]*ny + -findMat[2] + findMat[3],
-		cy = findMat[4]*nx + findMat[5]*ny + -findMat[6] + findMat[7]
+	const cx = findMat[0]*nx + findMat[4]*ny + -findMat[8] + findMat[12],
+		cy = findMat[1]*nx + findMat[5]*ny + -findMat[9] + findMat[13]
 	// world space
-	let wx = viewMat[0]*cx + viewMat[1]*cy + -viewMat[2],
-		wy = viewMat[4]*cx + viewMat[5]*cy + -viewMat[6],
-		wz = viewMat[8]*cx + viewMat[9]*cy + -viewMat[10],
-		len = wx*wx + wy*wy + wz*wz
+	invert(findMat, viewMat)
+	let x = findMat[0]*cx + findMat[4]*cy + -findMat[8],
+		y = findMat[1]*cx + findMat[5]*cy + -findMat[9],
+		z = findMat[2]*cx + findMat[6]*cy + -findMat[10],
+		len = x*x + y*y + z*z
 	if (len > 0) {
 		len = 1 / M.sqrt(len)
 	}
-	wx *= len
-	wy *= len
-	wz *= len
-	invert(findMat, viewMat)
-	return rayGround(out, -findMat[12], findMat[13], findMat[14], wx, wy, wz)
+	x *= len
+	y *= len
+	z *= len
+	return rayGround(out, -findMat[12], findMat[13], findMat[14], x, y, z)
 }
 
 function setPointer(event, down) {
