@@ -576,8 +576,7 @@ function pointerUp(event) {
 	} else {
 		if (!drag.dragging &&
 				findGroundSpot(ground, pointersX[0], pointersY[0])) {
-			translate(marker.matrix, idMat, -ground[0], ground[1] + .5, ground[2])
-			scale(marker.matrix, marker.matrix, .5, .5, .5)
+			translate(marker.origin, idMat, -ground[0], ground[1], ground[2])
 		}
 		stopDrag()
 	}
@@ -663,7 +662,8 @@ function calculateNormals(vertices, indicies) {
 }
 
 function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
-	const model = {count: indicies.length}
+	const model = {count: indicies.length},
+		nvertices = vertices.length / 3
 
 	model.vertices = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
@@ -675,24 +675,34 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 		new FA(calculateNormals(vertices, indicies)),
 		gl.STATIC_DRAW)
 
+	boneIndex = boneIndex ? new FA(boneIndex) : new FA(nvertices << 1)
 	model.boneIndex = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
 	gl.bufferData(gl.ARRAY_BUFFER, new FA(boneIndex), gl.STATIC_DRAW)
 
+	if (boneWeight) {
+		boneWeight = new FA(boneWeight)
+	} else {
+		const n = nvertices << 1,
+			a = []
+		for (let i = n; i--;) {
+			a[i] = .5
+		}
+		boneWeight = new FA(a)
+	}
 	model.boneWeight = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
-	gl.bufferData(gl.ARRAY_BUFFER, new FA(boneWeight), gl.STATIC_DRAW)
+	gl.bufferData(gl.ARRAY_BUFFER, boneWeight, gl.STATIC_DRAW)
 
 	model.indicies = gl.createBuffer()
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicies),
 		gl.STATIC_DRAW)
 
+	uvs = uvs ? new FA(uvs) : new FA(nvertices << 1)
 	model.uvs = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
-	gl.bufferData(gl.ARRAY_BUFFER,
-		uvs ? new FA(uvs) : new FA((vertices.length / 3) << 1),
-		gl.STATIC_DRAW)
+	gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
 
 	return model
 }
@@ -843,6 +853,7 @@ function createCube() {
 function createEntities() {
 	entities = []
 
+	const guyModel = createGuy()
 	const planeModel = createPlane()
 	const cubeModel = createCube()
 	const defaultBones = [idMat, idMat]
@@ -905,7 +916,7 @@ function createEntities() {
 	mat = new FA(idMat)
 	translate(mat, mat, -3, 2.5, 0)
 	scale(mat, mat, .5, .5, .5)
-	entities.push(marker = {
+	entities.push({
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
@@ -932,6 +943,19 @@ function createEntities() {
 			const m = new FA(idMat)
 			rotate(m, idMat, now * .001, 1, 1, 0)
 			multiply(this.matrix, m, this.origin)
+		}
+	})
+
+	mat = new FA(idMat)
+	translate(mat, mat, 4, 1, 0)
+	entities.push(marker = {
+		origin: mat,
+		matrix: new FA(mat),
+		model: guyModel,
+		bones: defaultBones,
+		color: [1, 1, 0, 1],
+		update: function(now) {
+			rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
 		}
 	})
 
@@ -1103,7 +1127,7 @@ void main() {
 	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
 	grid = step(mod(textureUV.x + ym, grid), thresh);
 	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
-	float light = intensity > .01 ?
+	float light = intensity > .5 ?
 		.75 + step(shadowPos.z, depth) * .25 :
 		1.;
 	light *= max(1. - grid, .85);
@@ -1292,3 +1316,61 @@ function init() {
 }
 
 W.onload = init
+
+function createGuy() {
+	const vertices = [
+		0,.55,.08,
+		.18,.75,-.16,
+		.23,.75,.13,
+		0,1.14,.18,
+		-.23,.75,.13,
+		-.18,.75,-.16,
+		.29,1.11,-.12,
+		.23,1.16,.12,
+		-.23,1.16,.12,
+		-.29,1.11,-.12,
+		0,1.25,-.17,
+		.49,0,0,
+		-.49,0,0,
+		.63,.79,.00,
+		-.22,1.30,-.01,
+		.22,1.30,-.01,
+		-.63,.79,.00,
+		0,1.64,.06
+	], indicies = [
+		1,11,0,
+		1,0,5,
+		0,2,3,
+		0,3,4,
+		5,12,4,
+		1,5,10,
+		2,1,6,
+		3,2,7,
+		4,3,8,
+		5,4,9,
+		1,10,6,
+		2,6,7,
+		13,15,7,
+		4,8,9,
+		5,9,10,
+		9,8,16,
+		13,6,15,
+		14,9,16,
+		6,13,7,
+		0,12,5,
+		2,11,1,
+		0,11,2,
+		0,4,12,
+		14,16,8,
+		8,3,14,
+		3,7,15,
+		10,9,14,
+		6,10,15,
+		14,17,10,
+		15,10,17,
+		14,3,15,
+		17,14,15
+	]
+
+	return createModel(vertices, indicies)
+}
