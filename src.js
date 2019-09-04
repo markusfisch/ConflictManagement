@@ -378,14 +378,14 @@ function drawEntities(setModel, drawModel, uniforms, attribs) {
 }
 
 function drawScreen() {
-	const uniforms = screenProgram.uniforms,
-		attribs = screenProgram.attribs
-
-	gl.useProgram(screenProgram)
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 	gl.viewport(0, 0, width, height)
 	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+	gl.useProgram(screenProgram)
+	const uniforms = screenProgram.uniforms,
+		attribs = screenProgram.attribs
 
 	gl.bindBuffer(gl.ARRAY_BUFFER, screenVertexBuffer)
 	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 0, 0)
@@ -404,14 +404,14 @@ function drawScreen() {
 }
 
 function drawCameraView() {
-	const uniforms = offscreenProgram.uniforms,
-		attribs = offscreenProgram.attribs
-
-	gl.useProgram(offscreenProgram)
 	gl.bindFramebuffer(gl.FRAMEBUFFER, offscreenBuffer)
 	gl.viewport(0, 0, offscreenWidth, offscreenHeight)
 	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+	gl.useProgram(offscreenProgram)
+	const uniforms = offscreenProgram.uniforms,
+		attribs = offscreenProgram.attribs
 
 	gl.uniformMatrix4fv(uniforms.projMat, false, projMat)
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
@@ -437,15 +437,15 @@ function drawCameraView() {
 }
 
 function drawShadowMap() {
-	const attribs = shadowProgram.attribs,
-		uniforms = shadowProgram.uniforms
-
-	gl.useProgram(shadowProgram)
 	gl.bindFramebuffer(gl.FRAMEBUFFER, shadowBuffer)
 	gl.viewport(0, 0, shadowDepthTextureSize, shadowDepthTextureSize)
 	gl.clearColor(0, 0, 0, 1)
 	gl.clearDepth(1)
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+	gl.useProgram(shadowProgram)
+	const attribs = shadowProgram.attribs,
+		uniforms = shadowProgram.uniforms
 
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
