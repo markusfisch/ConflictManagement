@@ -666,8 +666,9 @@ function calculateNormals(vertices, indicies) {
 }
 
 function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
-	const ncoordinates = vertices.length,
-		nvertices = ncoordinates / 3,
+	const normals = calculateNormals(vertices, indicies),
+		ncoordinates = vertices.length,
+		vec2elements = (ncoordinates / 3) << 1,
 		model = {
 			count: indicies.length,
 			stride: 12 << 2,
@@ -678,18 +679,16 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 			texturePos: 10 << 2
 		}
 
-	boneIndex = boneIndex || new FA(nvertices << 1)
+	boneIndex = boneIndex || new FA(vec2elements)
 	if (!boneWeight) {
 		boneWeight = []
-		for (let i = nvertices << 1; i--;) {
+		for (let i = vec2elements; i--;) {
 			boneWeight.push(.5)
 		}
 	}
-	uvs = uvs || new FA(nvertices << 1)
+	uvs = uvs || new FA(vec2elements)
 
-	const normals = calculateNormals(vertices, indicies),
-		buffer = []
-
+	const buffer = []
 	for (let v = 0, n = 0, i = 0, w = 0, p = 0; v < ncoordinates;) {
 		buffer.push(vertices[v++])
 		buffer.push(vertices[v++])
@@ -704,7 +703,6 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 		buffer.push(uvs[p++])
 		buffer.push(uvs[p++])
 	}
-
 	model.buffer = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
 	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
@@ -872,38 +870,7 @@ function createCube() {
 		0, 1,
 		0, 0,
 		0, 0
-	],[
-		// front
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		// right
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		// back
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		// left
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		// bottom
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		// top
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5
-	])
+	],null)
 }
 
 function createEntities() {
