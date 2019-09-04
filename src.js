@@ -31,8 +31,7 @@ let gl,
 	offscreenBuffer,
 	offscreenTexture,
 	offscreenProgram,
-	screenVertexBuffer,
-	screenTextureBuffer,
+	screenBuffer,
 	screenProgram,
 	entitiesLength,
 	entities = [],
@@ -403,10 +402,9 @@ function drawScreen() {
 	const uniforms = screenProgram.uniforms,
 		attribs = screenProgram.attribs
 
-	gl.bindBuffer(gl.ARRAY_BUFFER, screenVertexBuffer)
-	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, screenTextureBuffer)
-	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer)
+	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 16, 0)
+	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 16, 8)
 
 	gl.activeTexture(gl.TEXTURE1)
 	gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
@@ -784,17 +782,7 @@ function createPlane() {
 	],[
 		0, 1, 3,
 		0, 3, 2
-	],[
-		0, 0,
-		0, 0,
-		0, 0,
-		0, 0
-	],[
-		.5, .5,
-		.5, .5,
-		.5, .5,
-		.5, .5
-	],[
+	],null,null,[
 		1, 1,
 		1, 0,
 		0, 1,
@@ -1253,25 +1241,14 @@ function createFrameBuffer(w, h) {
 }
 
 function createScreenBuffer() {
-	screenVertexBuffer = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, screenVertexBuffer)
+	screenBuffer = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer)
 	gl.bufferData(gl.ARRAY_BUFFER,
 		new FA([
-			-1, 1,
-			-1, -1,
-			1, 1,
-			1, -1
-		]),
-		gl.STATIC_DRAW)
-
-	screenTextureBuffer = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, screenTextureBuffer)
-	gl.bufferData(gl.ARRAY_BUFFER,
-		new FA([
-			1, 1,
-			1, 0,
-			0, 1,
-			0, 0
+			-1, 1, 1, 1,
+			-1, -1, 1, 0,
+			1, 1, 0, 1,
+			1, -1, 0, 0
 		]),
 		gl.STATIC_DRAW)
 }
