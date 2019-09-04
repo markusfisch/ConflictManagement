@@ -336,7 +336,12 @@ function setCameraModel(uniforms, mm) {
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
 }
 
-function drawEntities(setModel, drawModel, uniforms, attribs) {
+function drawEntities(setModel, drawModel, attribs, uniforms) {
+	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.uv)
+	gl.enableVertexAttribArray(attribs.boneIndex)
+	gl.enableVertexAttribArray(attribs.boneWeight)
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i],
 			model = e.model,
@@ -368,6 +373,11 @@ function drawEntities(setModel, drawModel, uniforms, attribs) {
 
 		drawModel(model.count, uniforms, e.color)
 	}
+	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.uv)
+	gl.disableVertexAttribArray(attribs.boneIndex)
+	gl.disableVertexAttribArray(attribs.boneWeight)
 }
 
 function initFrame(buffer, w, h) {
@@ -385,8 +395,8 @@ function drawScreen() {
 	initCameraFrame(null, width, height)
 
 	gl.useProgram(screenProgram)
-	const uniforms = screenProgram.uniforms,
-		attribs = screenProgram.attribs
+	const attribs = screenProgram.attribs,
+		uniforms = screenProgram.uniforms
 
 	gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer)
 	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 16, 0)
@@ -407,8 +417,8 @@ function drawCameraView() {
 	initCameraFrame(offscreenBuffer, offscreenWidth, offscreenHeight)
 
 	gl.useProgram(offscreenProgram)
-	const uniforms = offscreenProgram.uniforms,
-		attribs = offscreenProgram.attribs
+	const attribs = offscreenProgram.attribs,
+		uniforms = offscreenProgram.uniforms
 
 	gl.uniformMatrix4fv(uniforms.projMat, false, projMat)
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
@@ -420,17 +430,7 @@ function drawCameraView() {
 	gl.bindTexture(gl.TEXTURE_2D, shadowTexture)
 	gl.uniform1i(uniforms.shadowTexture, 0)
 
-	gl.enableVertexAttribArray(attribs.vertex)
-	gl.enableVertexAttribArray(attribs.normal)
-	gl.enableVertexAttribArray(attribs.uv)
-	gl.enableVertexAttribArray(attribs.boneIndex)
-	gl.enableVertexAttribArray(attribs.boneWeight)
-	drawEntities(setCameraModel, drawCameraModel, uniforms, attribs)
-	gl.disableVertexAttribArray(attribs.vertex)
-	gl.disableVertexAttribArray(attribs.normal)
-	gl.disableVertexAttribArray(attribs.uv)
-	gl.disableVertexAttribArray(attribs.boneIndex)
-	gl.disableVertexAttribArray(attribs.boneWeight)
+	drawEntities(setCameraModel, drawCameraModel, attribs, uniforms)
 }
 
 function drawShadowMap() {
@@ -444,17 +444,7 @@ function drawShadowMap() {
 	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 
-	gl.enableVertexAttribArray(attribs.vertex)
-	gl.enableVertexAttribArray(attribs.normal)
-	gl.enableVertexAttribArray(attribs.uv)
-	gl.enableVertexAttribArray(attribs.boneIndex)
-	gl.enableVertexAttribArray(attribs.boneWeight)
-	drawEntities(nop, drawShadowModel, uniforms, attribs)
-	gl.disableVertexAttribArray(attribs.vertex)
-	gl.disableVertexAttribArray(attribs.normal)
-	gl.disableVertexAttribArray(attribs.uv)
-	gl.disableVertexAttribArray(attribs.boneIndex)
-	gl.disableVertexAttribArray(attribs.boneWeight)
+	drawEntities(nop, drawShadowModel, attribs, uniforms)
 }
 
 function update() {
