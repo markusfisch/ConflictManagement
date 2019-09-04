@@ -355,8 +355,10 @@ function drawEntities(setModel, drawModel, uniforms, attribs) {
 		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
 		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
 		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
-		gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
+		if (attribs.texturePos) {
+			gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
+			gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
+		}
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
@@ -451,12 +453,10 @@ function drawShadowMap() {
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
-	gl.enableVertexAttribArray(attribs.texturePos)
 	drawEntities(setShadowModel, drawShadowModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
-	gl.disableVertexAttribArray(attribs.texturePos)
 }
 
 function draw() {
@@ -1038,7 +1038,6 @@ attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec2 boneIndex;
 attribute vec2 boneWeight;
-attribute vec2 texturePos;
 
 uniform mat4 lightProjMat;
 uniform mat4 lightModelViewMat;
@@ -1047,7 +1046,6 @@ uniform mat4 normalMat;
 uniform mat4 bones[2];
 
 varying float bias;
-varying vec2 textureUV;
 
 void main() {
 	vec4 v = vec4(vertex, 1.);
@@ -1058,7 +1056,6 @@ void main() {
 	bias = 0.001 * (1. - intensity);
 	v.w = 1.;
 	gl_Position = lightProjMat * lightModelViewMat * v;
-	textureUV = texturePos;
 }`, lightFragmentShader = `${precision}
 varying float bias;
 
@@ -1155,7 +1152,7 @@ void main() {
 
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight', 'texturePos'],
+		['vertex', 'normal', 'boneIndex', 'boneWeight'],
 		['lightProjMat', 'lightModelViewMat', 'normalMat', 'lightModelViewMat',
 			'bones[0]', 'bones[1]'])
 
