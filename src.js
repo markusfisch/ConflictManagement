@@ -19,6 +19,7 @@ const M = Math,
 	lightViewMat = new FA(idMat),
 	lightDirection = [0, 0, 0],
 	camPos = [0, 9, 7],
+	spot = [0, 0, 0],
 	skyColor = [.06, .06, .06, 1],
 	offscreenWidth = 256,
 	offscreenHeight = 256,
@@ -43,8 +44,6 @@ let gl,
 	pointersLength,
 	pointersX = [],
 	pointersY = [],
-	pointersXGl = [],
-	pointersYGl = [],
 	keysDown = [],
 	drag = {},
 	marker
@@ -485,15 +484,10 @@ function rayGround(out, lx, ly, lz, dx, dy, dz) {
 	return false
 }
 
-function findGroundSpot(out, pointerX, pointerY) {
-	// normalised device space
-	const nx = (2 * pointerX) / width - 1,
-		ny = 1 - (2 * pointerY) / height
-	// camera space
+function findGroundSpot(out, nx, ny) {
 	invert(findMat, projMat)
 	const cx = findMat[0]*nx + findMat[4]*ny + -findMat[8] + findMat[12],
 		cy = findMat[1]*nx + findMat[5]*ny + -findMat[9] + findMat[13]
-	// world space
 	invert(findMat, viewMat)
 	let x = findMat[0]*cx + findMat[4]*cy + -findMat[8],
 		y = findMat[1]*cx + findMat[5]*cy + -findMat[9],
@@ -527,16 +521,16 @@ function setPointer(event, down) {
 
 	// map to WebGL coordinates
 	for (let i = pointersLength; i--;) {
-		pointersXGl[i] = pointersX[i] * widthToGl - 1
-		pointersYGl[i] = -(pointersY[i] * heightToGl - ymax)
+		pointersX[i] = (2 * pointersX[i]) / width - 1
+		pointersY[i] = 1 - (2 * pointersY[i]) / height
 	}
 
 	event.stopPropagation()
 }
 
 function dragCamera() {
-	const dx = pointersXGl[0] - drag.x,
-		dy = pointersYGl[0] - drag.y,
+	const dx = pointersX[0] - drag.x,
+		dy = pointersY[0] - drag.y,
 		d = dx*dx + dy*dy,
 		f = 8
 	if (d > .001) {
@@ -551,8 +545,8 @@ function stopDrag() {
 
 function startDrag() {
 	stopDrag()
-	drag.x = pointersXGl[0]
-	drag.y = pointersYGl[0]
+	drag.x = pointersX[0]
+	drag.y = pointersY[0]
 	invert(findMat, viewMat)
 	drag.cx = findMat[12] - camPos[0]
 	drag.cz = findMat[14] - camPos[2]
@@ -563,15 +557,14 @@ function pointerCancel(event) {
 	stopDrag()
 }
 
-const ground = [0, 0, 0]
 function pointerUp(event) {
 	setPointer(event, false)
 	if (pointersLength > 0) {
 		startDrag()
 	} else {
 		if (!drag.dragging &&
-				findGroundSpot(ground, pointersX[0], pointersY[0])) {
-			translate(marker.origin, idMat, -ground[0], ground[1], ground[2])
+				findGroundSpot(spot, pointersX[0], pointersY[0])) {
+			translate(marker.origin, idMat, -spot[0], spot[1], spot[2])
 		}
 		stopDrag()
 	}
