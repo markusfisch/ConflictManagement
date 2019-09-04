@@ -338,22 +338,23 @@ function setCameraModel(uniforms, mm) {
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
 }
 
-function bindShadowModel(attribs, model) {
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
-	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
-	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
+function bindShadowModel(attribs, model, stride) {
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, stride,
+		model.vertex)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, stride,
+		model.normal)
+	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, stride,
+		model.boneIndex)
+	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, stride,
+		model.boneWeight)
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 }
 
-function bindCameraModel(attribs, model) {
-	bindShadowModel(attribs, model)
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
-	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
+function bindCameraModel(attribs, model, stride) {
+	bindShadowModel(attribs, model, stride)
+	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, stride,
+		model.texturePos)
 }
 
 function drawEntities(bindModel, setModel, drawModel, uniforms, attribs) {
@@ -364,7 +365,7 @@ function drawEntities(bindModel, setModel, drawModel, uniforms, attribs) {
 			mm = e.matrix
 
 		// attribs & buffers
-		bindModel(attribs, model)
+		bindModel(attribs, model, model.stride)
 
 		// uniforms
 		multiply(modelViewMat, lightViewMat, mm)
@@ -667,47 +668,53 @@ function calculateNormals(vertices, indicies) {
 }
 
 function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
-	const model = {count: indicies.length},
-		nvertices = vertices.length / 3
-
-	model.vertices = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
-	gl.bufferData(gl.ARRAY_BUFFER, new FA(vertices), gl.STATIC_DRAW)
-
-	model.normals = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
-	gl.bufferData(gl.ARRAY_BUFFER,
-		new FA(calculateNormals(vertices, indicies)),
-		gl.STATIC_DRAW)
-
-	boneIndex = boneIndex ? new FA(boneIndex) : new FA(nvertices << 1)
-	model.boneIndex = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
-	gl.bufferData(gl.ARRAY_BUFFER, boneIndex, gl.STATIC_DRAW)
-
-	if (boneWeight) {
-		boneWeight = new FA(boneWeight)
-	} else {
-		const n = nvertices << 1,
-			a = []
-		for (let i = n; i--;) {
-			a[i] = .5
+	const ncoordinates = vertices.length,
+		nvertices = ncoordinates / 3,
+		model = {
+			count: indicies.length,
+			stride: 12 << 2,
+			vertex: 0,
+			normal: 3 << 2,
+			boneIndex: 6 << 2,
+			boneWeight: 8 << 2,
+			texturePos: 10 << 2
 		}
-		boneWeight = new FA(a)
+
+	boneIndex = boneIndex || new FA(nvertices << 1)
+	if (!boneWeight) {
+		boneWeight = []
+		for (let i = nvertices << 1; i--;) {
+			boneWeight.push(.5)
+		}
 	}
-	model.boneWeight = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
-	gl.bufferData(gl.ARRAY_BUFFER, boneWeight, gl.STATIC_DRAW)
+	uvs = uvs || new FA(nvertices << 1)
+
+	const normals = calculateNormals(vertices, indicies),
+		buffer = []
+
+	for (let v = 0, n = 0, i = 0, w = 0, p = 0; v < ncoordinates;) {
+		buffer.push(vertices[v++])
+		buffer.push(vertices[v++])
+		buffer.push(vertices[v++])
+		buffer.push(normals[n++])
+		buffer.push(normals[n++])
+		buffer.push(normals[n++])
+		buffer.push(boneIndex[i++])
+		buffer.push(boneIndex[i++])
+		buffer.push(boneWeight[w++])
+		buffer.push(boneWeight[w++])
+		buffer.push(uvs[p++])
+		buffer.push(uvs[p++])
+	}
+
+	model.buffer = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
 
 	model.indicies = gl.createBuffer()
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicies),
 		gl.STATIC_DRAW)
-
-	uvs = uvs ? new FA(uvs) : new FA(nvertices << 1)
-	model.uvs = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
-	gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
 
 	return model
 }
