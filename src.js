@@ -22,11 +22,11 @@ const M = Math,
 	skyColor = [.06, .06, .06, 1],
 	offscreenWidth = 256,
 	offscreenHeight = 256,
-	shadowDepthTextureSize = 1024
+	shadowTextureSize = 1024
 
 let gl,
 	shadowBuffer,
-	shadowDepthTexture,
+	shadowTexture,
 	shadowProgram,
 	offscreenBuffer,
 	offscreenTexture,
@@ -53,6 +53,11 @@ let gl,
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
 
+function nop() {
+	// it's faster to run an empty function than using a conditional
+	// statement thanks to branch prediction
+}
+
 // from https://github.com/toji/gl-matrix
 function invert(out, a) {
 	const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
@@ -74,17 +79,17 @@ function invert(out, a) {
 
 	// calculate the determinant
 	let d = b00 * b11 -
-			b01 * b10 +
-			b02 * b09 +
-			b03 * b08 -
-			b04 * b07 +
-			b05 * b06
+		b01 * b10 +
+		b02 * b09 +
+		b03 * b08 -
+		b04 * b07 +
+		b05 * b06
 
 	if (!d) {
 		return
 	}
 
-	d = 1.0 / d
+	d = 1 / d
 
 	out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * d
 	out[1] = (a02 * b10 - a01 * b11 - a03 * b09) * d
@@ -148,7 +153,7 @@ function rotate(out, a, rad, x, y, z) {
 		b10, b11, b12,
 		b20, b21, b22
 
-	if (M.abs(len) < 0.000001) {
+	if (M.abs(len) < .000001) {
 		return
 	}
 
@@ -320,51 +325,53 @@ function setPerspective(out, fov, aspect, near, far) {
 	out[15] = 0
 }
 
-function drawCameraModel(count, uniforms, color) {
-	gl.uniform4fv(uniforms.color, color)
-	gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0)
-}
-
 function drawShadowModel(count) {
 	gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0)
 }
 
+function drawCameraModel(count, uniforms, color) {
+	gl.uniform4fv(uniforms.color, color)
+	drawShadowModel(count)
+}
+
 function setCameraModel(uniforms, mm) {
-	multiply(modelViewMat, viewMat, mm)
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
 }
 
-function setShadowModel() {
-	// it's faster to execute empty functions instead of using a
-	// conditional statement thanks to branch prediction
+function bindShadowModel(attribs, model) {
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
+	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
+	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 }
 
-function drawEntities(setModel, drawModel, uniforms, attribs) {
-	for (let model, i = entitiesLength; i--;) {
+function bindCameraModel(attribs, model) {
+	bindShadowModel(attribs, model)
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
+	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
+}
+
+function drawEntities(bindModel, setModel, drawModel, uniforms, attribs) {
+	for (let i = entitiesLength; i--;) {
 		const e = entities[i],
 			model = e.model,
 			bones = e.bones,
 			mm = e.matrix
 
 		// attribs & buffers
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.vertices)
-		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 0, 0)
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.normals)
-		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 0, 0)
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
-		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 0, 0)
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.boneWeight)
-		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 0, 0)
-		if (attribs.texturePos) {
-			gl.bindBuffer(gl.ARRAY_BUFFER, model.uvs)
-			gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 0, 0)
-		}
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+		bindModel(attribs, model)
 
 		// uniforms
-		setModel(uniforms, mm)
 		multiply(modelViewMat, lightViewMat, mm)
 		gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
+
+		multiply(modelViewMat, viewMat, mm)
+		setModel(uniforms, mm)
 		// the model matrix needs to be inverted and transposed to
 		// scale the normals correctly
 		invert(modelViewMat, mm)
@@ -377,11 +384,19 @@ function drawEntities(setModel, drawModel, uniforms, attribs) {
 	}
 }
 
-function drawScreen() {
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-	gl.viewport(0, 0, width, height)
-	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
+function initFrame(buffer, w, h) {
+	gl.bindFramebuffer(gl.FRAMEBUFFER, buffer)
+	gl.viewport(0, 0, w, h)
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+}
+
+function initCameraFrame(buffer, w, h) {
+	initFrame(buffer, w, h)
+	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
+}
+
+function drawScreen() {
+	initCameraFrame(null, width, height)
 
 	gl.useProgram(screenProgram)
 	const uniforms = screenProgram.uniforms,
@@ -404,10 +419,7 @@ function drawScreen() {
 }
 
 function drawCameraView() {
-	gl.bindFramebuffer(gl.FRAMEBUFFER, offscreenBuffer)
-	gl.viewport(0, 0, offscreenWidth, offscreenHeight)
-	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
-	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+	initCameraFrame(offscreenBuffer, offscreenWidth, offscreenHeight)
 
 	gl.useProgram(offscreenProgram)
 	const uniforms = offscreenProgram.uniforms,
@@ -420,15 +432,15 @@ function drawCameraView() {
 	gl.uniform1f(uniforms.far, horizon)
 
 	gl.activeTexture(gl.TEXTURE0)
-	gl.bindTexture(gl.TEXTURE_2D, shadowDepthTexture)
-	gl.uniform1i(uniforms.shadowDepthTexture, 0)
+	gl.bindTexture(gl.TEXTURE_2D, shadowTexture)
+	gl.uniform1i(uniforms.shadowTexture, 0)
 
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
 	gl.enableVertexAttribArray(attribs.texturePos)
-	drawEntities(setCameraModel, drawCameraModel, uniforms, attribs)
+	drawEntities(bindCameraModel, setCameraModel, drawCameraModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
 	gl.disableVertexAttribArray(attribs.boneIndex)
@@ -437,11 +449,8 @@ function drawCameraView() {
 }
 
 function drawShadowMap() {
-	gl.bindFramebuffer(gl.FRAMEBUFFER, shadowBuffer)
-	gl.viewport(0, 0, shadowDepthTextureSize, shadowDepthTextureSize)
+	initFrame(shadowBuffer, shadowTextureSize, shadowTextureSize)
 	gl.clearColor(0, 0, 0, 1)
-	gl.clearDepth(1)
-	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 	gl.useProgram(shadowProgram)
 	const attribs = shadowProgram.attribs,
@@ -453,16 +462,10 @@ function drawShadowMap() {
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
-	drawEntities(setShadowModel, drawShadowModel, uniforms, attribs)
+	drawEntities(bindShadowModel, nop, drawShadowModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
-}
-
-function draw() {
-	drawShadowMap()
-	drawCameraView()
-	drawScreen()
 }
 
 function update() {
@@ -475,7 +478,9 @@ function update() {
 function run() {
 	requestAnimationFrame(run)
 	update()
-	draw()
+	drawShadowMap()
+	drawCameraView()
+	drawScreen()
 }
 
 function rayGround(out, lx, ly, lz, dx, dy, dz) {
@@ -678,7 +683,7 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 	boneIndex = boneIndex ? new FA(boneIndex) : new FA(nvertices << 1)
 	model.boneIndex = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.boneIndex)
-	gl.bufferData(gl.ARRAY_BUFFER, new FA(boneIndex), gl.STATIC_DRAW)
+	gl.bufferData(gl.ARRAY_BUFFER, boneIndex, gl.STATIC_DRAW)
 
 	if (boneWeight) {
 		boneWeight = new FA(boneWeight)
@@ -705,6 +710,62 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 	gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
 
 	return model
+}
+
+function createTestModel() {
+	return createModel([
+		0,.55,.08,
+		.18,.75,-.16,
+		.23,.75,.13,
+		0,1.14,.18,
+		-.23,.75,.13,
+		-.18,.75,-.16,
+		.29,1.11,-.12,
+		.23,1.16,.12,
+		-.23,1.16,.12,
+		-.29,1.11,-.12,
+		0,1.25,-.17,
+		.49,0,0,
+		-.49,0,0,
+		.63,.79,.00,
+		-.22,1.30,-.01,
+		.22,1.30,-.01,
+		-.63,.79,.00,
+		0,1.64,.06
+	],[
+		1,11,0,
+		1,0,5,
+		0,2,3,
+		0,3,4,
+		5,12,4,
+		1,5,10,
+		2,1,6,
+		3,2,7,
+		4,3,8,
+		5,4,9,
+		1,10,6,
+		2,6,7,
+		13,15,7,
+		4,8,9,
+		5,9,10,
+		9,8,16,
+		13,6,15,
+		14,9,16,
+		6,13,7,
+		0,12,5,
+		2,11,1,
+		0,11,2,
+		0,4,12,
+		14,16,8,
+		8,3,14,
+		3,7,15,
+		10,9,14,
+		6,10,15,
+		14,17,10,
+		15,10,17,
+		14,3,15,
+		17,14,15
+	])
 }
 
 function createPlane() {
@@ -853,10 +914,7 @@ function createCube() {
 function createEntities() {
 	entities = []
 
-	const guyModel = createGuy()
-	const planeModel = createPlane()
 	const cubeModel = createCube()
-	const defaultBones = [idMat, idMat]
 	let mat
 
 	mat = new FA(idMat)
@@ -864,25 +922,9 @@ function createEntities() {
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
-		model: planeModel,
-		bones: defaultBones,
+		model: createPlane(),
 		color: [.3, .3, .3, 1]
 	})
-
-	/*const size = 30, tiles = 10, step = size / tiles, tileSize = step * .5
-	for (let z = -size, i = 0; z <= size; z += step) {
-		for (let x = -size; x <= size; x += step) {
-			mat = new FA(idMat)
-			translate(mat, mat, x, .1, z)
-			scale(mat, mat, tileSize, .1, tileSize)
-			entities.push({
-				matrix: new FA(mat),
-				model: cubeModel,
-				bones: defaultBones,
-				color: [i++ & 1 ? .2 : .9, .4, .8, 1]
-			})
-		}
-	}*/
 
 	mat = new FA(idMat)
 	translate(mat, mat, 0, 1, 0)
@@ -891,7 +933,6 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
-		bones: defaultBones,
 		color: [.2, .4, .8, 1],
 		update: function(now) {
 			rotate(this.matrix, this.origin, -now * .0005, 0, 1, 0)
@@ -905,7 +946,6 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
-		bones: defaultBones,
 		color: [1, 1, 1, 1],
 		update: function(now) {
 			translate(this.matrix, this.origin, 0, 1 + M.sin(now * .001) * 2, 0)
@@ -923,7 +963,6 @@ function createEntities() {
 		bones: [new FA(idMat), new FA(idMat)],
 		color: [0, 1, 1, 1],
 		update: function(now) {
-			//rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
 			const t = M.abs(M.sin(now * .0005)) * 3
 			translate(this.bones[1], idMat, t, 0, t)
 		}
@@ -937,7 +976,6 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
-		bones: defaultBones,
 		color: [1, 0, 1, 1],
 		update: function(now) {
 			const m = new FA(idMat)
@@ -951,8 +989,7 @@ function createEntities() {
 	entities.push(marker = {
 		origin: mat,
 		matrix: new FA(mat),
-		model: guyModel,
-		bones: defaultBones,
+		model: createTestModel(),
 		color: [1, 1, 0, 1],
 		update: function(now) {
 			rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
@@ -961,9 +998,11 @@ function createEntities() {
 
 	entitiesLength = entities.length
 
+	const defaultBones = [idMat, idMat]
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
-		e.update = e.update || function() {}
+		e.update = e.update || nop
+		e.bones = e.bones || defaultBones
 	}
 }
 
@@ -1053,7 +1092,7 @@ void main() {
 			(bones[int(boneIndex.y)] * v) * boneWeight.y);
 	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
-	bias = 0.001 * (1. - intensity);
+	bias = .001 * (1. - intensity);
 	v.w = 1.;
 	gl_Position = lightProjMat * lightModelViewMat * v;
 }`, lightFragmentShader = `${precision}
@@ -1106,7 +1145,7 @@ void main() {
 uniform float far;
 uniform vec4 sky;
 uniform vec4 color;
-uniform sampler2D shadowDepthTexture;
+uniform sampler2D shadowTexture;
 
 varying float intensity;
 varying float z;
@@ -1123,7 +1162,7 @@ void main() {
 	float thresh = grid * .5;
 	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
 	grid = step(mod(textureUV.x + ym, grid), thresh);
-	float depth = decodeFloat(texture2D(shadowDepthTexture, shadowPos.xy));
+	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
 	float light = intensity > .5 ?
 		.75 + step(shadowPos.z, depth) * .25 :
 		1.;
@@ -1153,7 +1192,8 @@ void main() {
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
 		['vertex', 'normal', 'boneIndex', 'boneWeight'],
-		['lightProjMat', 'lightModelViewMat', 'normalMat', 'lightModelViewMat',
+		['normalMat',
+			'lightProjMat', 'lightModelViewMat', 'lightModelViewMat',
 			'bones[0]', 'bones[1]'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
@@ -1162,11 +1202,11 @@ void main() {
 		['vertex', 'normal', 'boneIndex', 'boneWeight', 'texturePos'],
 		['projMat', 'modelViewMat', 'normalMat',
 			'lightProjMat', 'lightModelViewMat', 'lightDirection',
-			'bones[0]', 'bones[1]', 'far', 'sky', 'color',
-			'shadowDepthTexture'])
+			'bones[0]', 'bones[1]', 'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
-	cacheLocations(screenProgram, ['vertex', 'texturePos'],
+	cacheLocations(screenProgram,
+		['vertex', 'texturePos'],
 		['offscreenTexture'])
 }
 
@@ -1213,7 +1253,8 @@ function createScreenBuffer() {
 			-1, 1,
 			-1, -1,
 			1, 1,
-			1, -1]),
+			1, -1
+		]),
 		gl.STATIC_DRAW)
 
 	screenTextureBuffer = gl.createBuffer()
@@ -1235,9 +1276,9 @@ function createOffscreenBuffer() {
 }
 
 function createShadowBuffer() {
-	const buf = createFrameBuffer(shadowDepthTextureSize,
-		shadowDepthTextureSize)
-	shadowDepthTexture = buf.tx
+	const buf = createFrameBuffer(shadowTextureSize,
+		shadowTextureSize)
+	shadowTexture = buf.tx
 	shadowBuffer = buf.fb
 }
 
@@ -1313,61 +1354,3 @@ function init() {
 }
 
 W.onload = init
-
-function createGuy() {
-	const vertices = [
-		0,.55,.08,
-		.18,.75,-.16,
-		.23,.75,.13,
-		0,1.14,.18,
-		-.23,.75,.13,
-		-.18,.75,-.16,
-		.29,1.11,-.12,
-		.23,1.16,.12,
-		-.23,1.16,.12,
-		-.29,1.11,-.12,
-		0,1.25,-.17,
-		.49,0,0,
-		-.49,0,0,
-		.63,.79,.00,
-		-.22,1.30,-.01,
-		.22,1.30,-.01,
-		-.63,.79,.00,
-		0,1.64,.06
-	], indicies = [
-		1,11,0,
-		1,0,5,
-		0,2,3,
-		0,3,4,
-		5,12,4,
-		1,5,10,
-		2,1,6,
-		3,2,7,
-		4,3,8,
-		5,4,9,
-		1,10,6,
-		2,6,7,
-		13,15,7,
-		4,8,9,
-		5,9,10,
-		9,8,16,
-		13,6,15,
-		14,9,16,
-		6,13,7,
-		0,12,5,
-		2,11,1,
-		0,11,2,
-		0,4,12,
-		14,16,8,
-		8,3,14,
-		3,7,15,
-		10,9,14,
-		6,10,15,
-		14,17,10,
-		15,10,17,
-		14,3,15,
-		17,14,15
-	]
-
-	return createModel(vertices, indicies)
-}
