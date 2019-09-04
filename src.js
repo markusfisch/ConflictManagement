@@ -337,26 +337,7 @@ function setCameraModel(uniforms, mm) {
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
 }
 
-function bindShadowModel(attribs, model, stride) {
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, stride,
-		model.vertex)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, stride,
-		model.normal)
-	gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, stride,
-		model.boneIndex)
-	gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, stride,
-		model.boneWeight)
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
-}
-
-function bindCameraModel(attribs, model, stride) {
-	bindShadowModel(attribs, model, stride)
-	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, stride,
-		model.texturePos)
-}
-
-function drawEntities(bindModel, setModel, drawModel, uniforms, attribs) {
+function drawEntities(setModel, drawModel, uniforms, attribs) {
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i],
 			model = e.model,
@@ -364,7 +345,13 @@ function drawEntities(bindModel, setModel, drawModel, uniforms, attribs) {
 			mm = e.matrix
 
 		// attribs & buffers
-		bindModel(attribs, model, model.stride)
+		gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 48, 0)
+		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 48, 12)
+		gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 48, 24)
+		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 48, 32)
+		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 48, 40)
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
 		multiply(modelViewMat, lightViewMat, mm)
@@ -404,17 +391,17 @@ function drawScreen() {
 
 	gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer)
 	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 16, 0)
-	gl.vertexAttribPointer(attribs.texturePos, 2, gl.FLOAT, false, 16, 8)
+	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 16, 8)
 
 	gl.activeTexture(gl.TEXTURE1)
 	gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
 	gl.uniform1i(uniforms.offscreenTexture, 1)
 
 	gl.enableVertexAttribArray(attribs.vertex)
-	gl.enableVertexAttribArray(attribs.texturePos)
+	gl.enableVertexAttribArray(attribs.uv)
 	gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 	gl.disableVertexAttribArray(attribs.vertex)
-	gl.disableVertexAttribArray(attribs.texturePos)
+	gl.disableVertexAttribArray(attribs.uv)
 }
 
 function drawCameraView() {
@@ -436,15 +423,15 @@ function drawCameraView() {
 
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.uv)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
-	gl.enableVertexAttribArray(attribs.texturePos)
-	drawEntities(bindCameraModel, setCameraModel, drawCameraModel, uniforms, attribs)
+	drawEntities(setCameraModel, drawCameraModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.uv)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
-	gl.disableVertexAttribArray(attribs.texturePos)
 }
 
 function drawShadowMap() {
@@ -459,10 +446,14 @@ function drawShadowMap() {
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 
 	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.uv)
 	gl.enableVertexAttribArray(attribs.boneIndex)
 	gl.enableVertexAttribArray(attribs.boneWeight)
-	drawEntities(bindShadowModel, nop, drawShadowModel, uniforms, attribs)
+	drawEntities(nop, drawShadowModel, uniforms, attribs)
 	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.uv)
 	gl.disableVertexAttribArray(attribs.boneIndex)
 	gl.disableVertexAttribArray(attribs.boneWeight)
 }
@@ -665,30 +656,22 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
-	const normals = calculateNormals(vertices, indicies),
-		ncoordinates = vertices.length,
+function createModel(vertices, indicies, uvs, boneIndices, boneWeights) {
+	const ncoordinates = vertices.length,
 		vec2elements = (ncoordinates / 3) << 1,
-		model = {
-			count: indicies.length,
-			stride: 12 << 2,
-			vertex: 0,
-			normal: 3 << 2,
-			boneIndex: 6 << 2,
-			boneWeight: 8 << 2,
-			texturePos: 10 << 2
-		}
+		model = {count: indicies.length}
 
-	boneIndex = boneIndex || new FA(vec2elements)
-	if (!boneWeight) {
-		boneWeight = []
+	uvs = uvs || new FA(vec2elements)
+	boneIndices = boneIndices || new FA(vec2elements)
+	if (!boneWeights) {
+		boneWeights = []
 		for (let i = vec2elements; i--;) {
-			boneWeight.push(.5)
+			boneWeights.push(.5)
 		}
 	}
-	uvs = uvs || new FA(vec2elements)
 
-	const buffer = []
+	const buffer = [],
+		normals = calculateNormals(vertices, indicies)
 	for (let v = 0, n = 0, i = 0, w = 0, p = 0; v < ncoordinates;) {
 		buffer.push(vertices[v++])
 		buffer.push(vertices[v++])
@@ -696,12 +679,12 @@ function createModel(vertices, indicies, boneIndex, boneWeight, uvs) {
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
-		buffer.push(boneIndex[i++])
-		buffer.push(boneIndex[i++])
-		buffer.push(boneWeight[w++])
-		buffer.push(boneWeight[w++])
 		buffer.push(uvs[p++])
 		buffer.push(uvs[p++])
+		buffer.push(boneIndices[i++])
+		buffer.push(boneIndices[i++])
+		buffer.push(boneWeights[w++])
+		buffer.push(boneWeights[w++])
 	}
 	model.buffer = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
@@ -780,7 +763,7 @@ function createPlane() {
 	],[
 		0, 1, 3,
 		0, 3, 2
-	],null,null,[
+	],[
 		1, 1,
 		1, 0,
 		0, 1,
@@ -839,7 +822,7 @@ function createCube() {
 		// top
 		20, 21, 23,
 		20, 23, 22
-	],[
+	],null,[
 		// front
 		0, 0,
 		0, 0,
@@ -870,7 +853,7 @@ function createCube() {
 		0, 1,
 		0, 0,
 		0, 0
-	],null)
+	])
 }
 
 function createEntities() {
@@ -1037,6 +1020,7 @@ precision mediump float;
 #endif`, lightVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
+attribute vec2 uv;
 attribute vec2 boneIndex;
 attribute vec2 boneWeight;
 
@@ -1069,9 +1053,9 @@ void main() {
 }`, offscreenVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
+attribute vec2 uv;
 attribute vec2 boneIndex;
 attribute vec2 boneWeight;
-attribute vec2 texturePos;
 
 uniform mat4 projMat;
 uniform mat4 modelViewMat;
@@ -1102,7 +1086,7 @@ void main() {
 	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
 	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat * v;
-	textureUV = texturePos;
+	textureUV = uv;
 }`, offscreenFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
@@ -1135,13 +1119,13 @@ void main() {
 		color.a);
 }`, screenVertexShader = `${precision}
 attribute vec2 vertex;
-attribute vec2 texturePos;
+attribute vec2 uv;
 
 varying vec2 textureUV;
 
 void main() {
 	gl_Position = vec4(vertex, 0., 1.);
-	textureUV = texturePos;
+	textureUV = uv;
 }`, screenFragmentShader = `${precision}
 varying vec2 textureUV;
 
@@ -1161,14 +1145,14 @@ void main() {
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight', 'texturePos'],
+		['vertex', 'normal', 'boneIndex', 'boneWeight', 'uv'],
 		['projMat', 'modelViewMat', 'normalMat',
 			'lightProjMat', 'lightModelViewMat', 'lightDirection',
 			'bones[0]', 'bones[1]', 'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
 	cacheLocations(screenProgram,
-		['vertex', 'texturePos'],
+		['vertex', 'uv'],
 		['offscreenTexture'])
 }
 
