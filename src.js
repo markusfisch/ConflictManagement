@@ -18,9 +18,9 @@ const M = Math,
 	lightProjMat = new FA(idMat),
 	lightViewMat = new FA(idMat),
 	lightDirection = [0, 0, 0],
+	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 9, 7],
 	spot = [0, 0, 0],
-	skyColor = [.06, .06, .06, 1],
 	offscreenWidth = 256,
 	offscreenHeight = 256,
 	shadowTextureSize = 1024
@@ -34,13 +34,10 @@ let gl,
 	offscreenProgram,
 	screenBuffer,
 	screenProgram,
+	screenWidth,
+	screenHeight,
 	entitiesLength,
 	entities = [],
-	width,
-	height,
-	ymax,
-	widthToGl,
-	heightToGl,
 	pointersLength,
 	pointersX = [],
 	pointersY = [],
@@ -380,19 +377,14 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 	gl.disableVertexAttribArray(attribs.boneWeight)
 }
 
-function initFrame(buffer, w, h) {
+function initView(buffer, w, h) {
 	gl.bindFramebuffer(gl.FRAMEBUFFER, buffer)
 	gl.viewport(0, 0, w, h)
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 }
 
-function initCameraFrame(buffer, w, h) {
-	initFrame(buffer, w, h)
-	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
-}
-
 function drawScreen() {
-	initCameraFrame(null, width, height)
+	initView(null, screenWidth, screenHeight)
 
 	gl.useProgram(screenProgram)
 	const attribs = screenProgram.attribs,
@@ -414,7 +406,8 @@ function drawScreen() {
 }
 
 function drawCameraView() {
-	initCameraFrame(offscreenBuffer, offscreenWidth, offscreenHeight)
+	initView(offscreenBuffer, offscreenWidth, offscreenHeight)
+	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
 
 	gl.useProgram(offscreenProgram)
 	const attribs = offscreenProgram.attribs,
@@ -434,7 +427,7 @@ function drawCameraView() {
 }
 
 function drawShadowMap() {
-	initFrame(shadowBuffer, shadowTextureSize, shadowTextureSize)
+	initView(shadowBuffer, shadowTextureSize, shadowTextureSize)
 	gl.clearColor(0, 0, 0, 1)
 
 	gl.useProgram(shadowProgram)
@@ -511,8 +504,8 @@ function setPointer(event, down) {
 
 	// map to WebGL coordinates
 	for (let i = pointersLength; i--;) {
-		pointersX[i] = (2 * pointersX[i]) / width - 1
-		pointersY[i] = 1 - (2 * pointersY[i]) / height
+		pointersX[i] = (2 * pointersX[i]) / screenWidth - 1
+		pointersY[i] = 1 - (2 * pointersY[i]) / screenHeight
 	}
 
 	event.stopPropagation()
@@ -584,17 +577,10 @@ function keyDown(event) {
 }
 
 function resize() {
-	width = gl.canvas.clientWidth
-	height = gl.canvas.clientHeight
-
-	gl.canvas.width = width
-	gl.canvas.height = height
-
-	ymax = height / width
-	widthToGl = 2 / width
-	heightToGl = ymax * 2 / height
-
-	setPerspective(projMat, M.PI * .125, width / height, .1, horizon)
+	gl.canvas.width = screenWidth = gl.canvas.clientWidth
+	gl.canvas.height = screenHeight = gl.canvas.clientHeight
+	setPerspective(projMat, M.PI * .125, screenWidth / screenHeight, .1,
+		horizon)
 }
 
 function calculateNormals(vertices, indicies) {
@@ -669,6 +655,7 @@ function createModel(vertices, indicies, uvs, boneIndices, boneWeights) {
 		buffer.push(boneWeights[w++])
 		buffer.push(boneWeights[w++])
 	}
+
 	model.buffer = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
 	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
@@ -737,7 +724,7 @@ function createTestModel() {
 	])
 }
 
-function createPlane() {
+function createGround() {
 	return createModel([
 		-1, 1, 1,
 		1, 1, 1,
@@ -850,7 +837,7 @@ function createEntities() {
 	scale(mat, mat, 30, .1, 30)
 	entities.push({
 		matrix: new FA(mat),
-		model: createPlane(),
+		model: createGround(),
 		color: [.3, .3, .3, 1]
 	})
 
