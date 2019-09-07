@@ -1099,9 +1099,9 @@ void main() {
 	float ym = step(mod(textureUV.y, grid), thrsh) * thrsh;
 	grid = step(mod(textureUV.x + ym, grid), thrsh);
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
-	float light = intensity > .5 ?
-		.75 + step(shadowPos.z, depth) * .25 :
-		1.;
+	float shad = step(.5, intensity);
+	float light = shad * (.75 + step(shadowPos.z, depth) * .25) +
+		(1. - shad);
 	light *= max(1. - grid, .85);
 	float fog = z / far;
 	gl_FragColor = vec4(
