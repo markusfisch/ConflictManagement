@@ -9,13 +9,16 @@ const M = Math,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
 		0, 0, 0, 1]),
-	projMat = new FA(idMat),
-	viewMat = new FA(idMat),
-	modelViewMat = new FA(16),
+	viewMat = new FA(16),
+	lightViewMat = new FA(16),
 	findMat = new FA(16),
 	horizon = 50,
-	lightProjMat = new FA(idMat),
-	lightViewMat = new FA(idMat),
+	mats = new FA(80),
+	projMat = new FA(mats.buffer, 0, 16),
+	modelViewMat = new FA(mats.buffer, 64, 16),
+	normalMat = new FA(mats.buffer, 128, 16),
+	lightProjMat = new FA(mats.buffer, 192, 16),
+	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 9, 7],
@@ -327,12 +330,8 @@ function drawCameraModel(count, uniforms, color) {
 	drawShadowModel(count)
 }
 
-function setCameraModel(uniforms, mm) {
-	multiply(modelViewMat, viewMat, mm)
-	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
-}
-
-function drawEntities(setModel, drawModel, attribs, uniforms) {
+function drawEntities(drawModel, attribs, uniforms) {
+	const matsLoc = uniforms['mats[0]']
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
 	for (let i = entitiesLength; i--;) {
@@ -347,16 +346,15 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
-		multiply(modelViewMat, lightViewMat, mm)
-		gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
+		multiply(modelViewMat, viewMat, mm)
+		multiply(lightModelViewMat, lightViewMat, mm)
 
-		setModel(uniforms, mm)
 		// the model matrix needs to be inverted and transposed to
 		// scale the normals correctly
-		invert(modelViewMat, mm)
-		transpose(modelViewMat, modelViewMat)
-		gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
+		invert(normalMat, mm)
+		transpose(normalMat, normalMat)
 
+		gl.uniformMatrix4fv(matsLoc, false, mats)
 		drawModel(model.count, uniforms, e.color)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
@@ -399,8 +397,6 @@ function drawCameraView() {
 	const attribs = offscreenProgram.attribs,
 		uniforms = offscreenProgram.uniforms
 
-	gl.uniformMatrix4fv(uniforms.projMat, false, projMat)
-	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 	gl.uniform4fv(uniforms.sky, skyColor)
 	gl.uniform1f(uniforms.far, horizon)
@@ -409,7 +405,7 @@ function drawCameraView() {
 	gl.bindTexture(gl.TEXTURE_2D, shadowTexture)
 	gl.uniform1i(uniforms.shadowTexture, 0)
 
-	drawEntities(setCameraModel, drawCameraModel, attribs, uniforms)
+	drawEntities(drawCameraModel, attribs, uniforms)
 }
 
 function drawShadowMap() {
@@ -420,10 +416,9 @@ function drawShadowMap() {
 	const attribs = shadowProgram.attribs,
 		uniforms = shadowProgram.uniforms
 
-	gl.uniformMatrix4fv(uniforms.lightProjMat, false, lightProjMat)
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 
-	drawEntities(nop, drawShadowModel, attribs, uniforms)
+	drawEntities(drawShadowModel, attribs, uniforms)
 }
 
 function update() {
@@ -890,18 +885,16 @@ precision mediump float;
 attribute vec3 vertex;
 attribute vec3 normal;
 
-uniform mat4 lightProjMat;
-uniform mat4 lightModelViewMat;
+uniform mat4 mats[5];
 uniform vec3 lightDirection;
-uniform mat4 normalMat;
 
 varying float bias;
 
 void main() {
-	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
+	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
 	bias = .001 * (1. - intensity);
-	gl_Position = lightProjMat * lightModelViewMat * vec4(vertex, 1.);
+	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
 }`, lightFragmentShader = `${precision}
 varying float bias;
 
@@ -915,11 +908,7 @@ void main() {
 attribute vec3 vertex;
 attribute vec3 normal;
 
-uniform mat4 projMat;
-uniform mat4 modelViewMat;
-uniform mat4 normalMat;
-uniform mat4 lightModelViewMat;
-uniform mat4 lightProjMat;
+uniform mat4 mats[5];
 uniform vec3 lightDirection;
 
 varying float intensity;
@@ -935,11 +924,11 @@ const mat4 texUnitConverter = mat4(
 
 void main() {
 	vec4 v = vec4(vertex, 1.);
-	gl_Position = projMat * modelViewMat * v;
+	gl_Position = mats[0] * mats[1] * v;
 	z = gl_Position.z;
-	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
+	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
-	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat * v;
+	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
 }`, offscreenFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
@@ -984,16 +973,13 @@ void main() {
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
 		['vertex', 'normal'],
-		['normalMat',
-			'lightProjMat', 'lightModelViewMat', 'lightModelViewMat'])
+		['mats[0]'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
 		['vertex', 'normal'],
-		['projMat', 'modelViewMat', 'normalMat',
-			'lightProjMat', 'lightModelViewMat', 'lightDirection',
-			'far', 'sky', 'color', 'shadowTexture'])
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
 	cacheLocations(screenProgram,
