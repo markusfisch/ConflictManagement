@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 readonly PRECISION=${PRECISION:-2}
 FACES=1
-echo 'const vertices = ['
+echo 'return createModel(['
 while read -r COMMAND A B C
 do
 	case "$COMMAND" in
@@ -30,7 +30,7 @@ do
 			;;
 		f)
 			((FACES)) && {
-				echo '], indicies = ['
+				echo '],['
 				FACES=0
 			}
 			echo -n $'\t'
@@ -43,4 +43,4 @@ do
 			;;
 	esac
 done
-echo ']'
+echo '])'
