@@ -4,11 +4,12 @@ const M = Math,
 	D = document,
 	W = window,
 	FA = Float32Array,
-	idMat = new FA([
+	idArray = [
 		1, 0, 0, 0,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
-		0, 0, 0, 1]),
+		0, 0, 0, 1],
+	idMat = new FA(idArray),
 	projMat = new FA(idMat),
 	viewMat = new FA(idMat),
 	modelViewMat = new FA(16),
@@ -365,8 +366,7 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 		invert(modelViewMat, mm)
 		transpose(modelViewMat, modelViewMat)
 		gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
-		gl.uniformMatrix4fv(uniforms['bones[0]'], false, bones[0])
-		gl.uniformMatrix4fv(uniforms['bones[1]'], false, bones[1])
+		gl.uniformMatrix4fv(uniforms['bones[0]'], false, bones)
 
 		drawModel(model.count, uniforms, e.color)
 	}
@@ -829,7 +829,9 @@ function createCube() {
 function createEntities() {
 	entities = []
 
-	const cubeModel = createCube()
+	const defaultBones = new FA([idArray, idArray].flat()),
+		cubeModel = createCube()
+
 	let mat
 
 	mat = new FA(idMat)
@@ -868,6 +870,7 @@ function createEntities() {
 		}
 	})
 
+	const b = new FA(defaultBones)
 	mat = new FA(idMat)
 	translate(mat, mat, -3, 2.5, 0)
 	scale(mat, mat, .5, .5, .5)
@@ -875,11 +878,15 @@ function createEntities() {
 		origin: mat,
 		matrix: new FA(mat),
 		model: cubeModel,
-		bones: [new FA(idMat), new FA(idMat)],
+		bones: b,
+		bp: [
+			new FA(b.buffer, 0, 16),
+			new FA(b.buffer, 64, 16)
+		],
 		color: [0, 1, 1, 1],
 		update: function(now) {
 			const t = M.abs(M.sin(now * .0005)) * 3
-			translate(this.bones[1], idMat, t, 0, t)
+			translate(this.bp[1], idMat, t, 0, t)
 		}
 	})
 
@@ -911,9 +918,22 @@ function createEntities() {
 		}
 	})
 
+	mat = new FA(idMat)
+	translate(mat, mat, 5, 2, 3)
+	scale(mat, mat, .5, .5, .5)
+	entities.push({
+		origin: mat,
+		matrix: new FA(mat),
+		model: cubeModel,
+		color: [.8, .8, .8, 1],
+		update: function(now) {
+			rotate(this.matrix, this.origin, now * .001, 1, 0, 0)
+			translate(this.matrix, this.matrix, 0, 2, 0)
+		}
+	})
+
 	entitiesLength = entities.length
 
-	const defaultBones = [idMat, idMat]
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
 		e.update = e.update || nop
