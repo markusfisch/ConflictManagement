@@ -1095,9 +1095,9 @@ float decodeFloat(vec4 c) {
 
 void main() {
 	float grid = 1. / 20.;
-	float thresh = grid * .5;
-	float ym = step(mod(textureUV.y, grid), thresh) * thresh;
-	grid = step(mod(textureUV.x + ym, grid), thresh);
+	float thrsh = grid * .5;
+	float ym = step(mod(textureUV.y, grid), thrsh) * thrsh;
+	grid = step(mod(textureUV.x + ym, grid), thrsh);
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
 	float light = intensity > .5 ?
 		.75 + step(shadowPos.z, depth) * .25 :
