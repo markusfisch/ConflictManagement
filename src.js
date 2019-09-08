@@ -534,7 +534,7 @@ function pointerUp(event) {
 	} else {
 		if (!drag.dragging &&
 				findGroundSpot(spot, pointersX[0], pointersY[0])) {
-			translate(marker.origin, idMat, -spot[0], spot[1], spot[2])
+			translate(marker.matrix, idMat, -spot[0], spot[1], spot[2])
 		}
 		stopDrag()
 	}
@@ -599,7 +599,34 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
+function contains(a, v) {
+	for (let i = 0, l = a.length; i < l; ++i) {
+		if (a[i] == v) {
+			return i
+		}
+	}
+	return -1
+}
+
+function makeVerticesUnique(vertices, indicies) {
+	const used = []
+	for (let i = 0, l = indicies.length; i < l; ++i) {
+		const idx = indicies[i]
+		if (contains(used, idx) > -1) {
+			let offset = idx * 3
+			indicies[i] = vertices.length / 3
+			vertices.push(vertices[offset++])
+			vertices.push(vertices[offset++])
+			vertices.push(vertices[offset])
+		} else {
+			used.push(idx)
+		}
+	}
+}
+
 function createModel(vertices, indicies) {
+	makeVerticesUnique(vertices, indicies)
+
 	const ncoordinates = vertices.length,
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
@@ -627,125 +654,115 @@ function createModel(vertices, indicies) {
 	return model
 }
 
-function createTestModel() {
+function createPlane() {
 	return createModel([
-		0,.55,.08,
-		.18,.75,-.16,
-		.23,.75,.13,
-		0,1.14,.18,
-		-.23,.75,.13,
-		-.18,.75,-.16,
-		.29,1.11,-.12,
-		.23,1.16,.12,
-		-.23,1.16,.12,
-		-.29,1.11,-.12,
-		0,1.25,-.17,
-		.49,0,0,
-		-.49,0,0,
-		.63,.79,.00,
-		-.22,1.30,-.01,
-		.22,1.30,-.01,
-		-.63,.79,.00,
-		0,1.64,.06
+		-1,0,1,
+		1,0,1,
+		-1,0,-1,
+		1,0,-1
 	],[
-		1,11,0,
-		1,0,5,
-		0,2,3,
-		0,3,4,
-		5,12,4,
-		1,5,10,
-		2,1,6,
-		3,2,7,
-		4,3,8,
-		5,4,9,
-		1,10,6,
-		2,6,7,
-		13,15,7,
-		4,8,9,
-		5,9,10,
-		9,8,16,
-		13,6,15,
-		14,9,16,
-		6,13,7,
-		0,12,5,
-		2,11,1,
-		0,11,2,
-		0,4,12,
-		14,16,8,
-		8,3,14,
-		3,7,15,
-		10,9,14,
-		6,10,15,
-		14,17,10,
-		15,10,17,
-		14,3,15,
-		17,14,15
-	])
-}
-
-function createGround() {
-	return createModel([
-		-1, 1, 1,
-		1, 1, 1,
-		-1, 1, -1,
-		1, 1, -1
-	],[
-		0, 1, 3,
-		0, 3, 2
+		0,1,3,
+		0,3,2
 	])
 }
 
 function createCube() {
 	return createModel([
-		// front
-		-1, -1, 1,
-		1, -1, 1,
-		-1, 1, 1,
-		1, 1, 1,
-		// right
-		1, -1, 1,
-		1, -1, -1,
-		1, 1, 1,
-		1, 1, -1,
-		// back
-		1, -1, -1,
-		-1, -1, -1,
-		1, 1, -1,
-		-1, 1, -1,
-		// left
-		-1, -1, -1,
-		-1, -1, 1,
-		-1, 1, -1,
-		-1, 1, 1,
-		// bottom
-		-1, -1, -1,
-		1, -1, -1,
-		-1, -1, 1,
-		1, -1, 1,
-		// top
-		-1, 1, 1,
-		1, 1, 1,
-		-1, 1, -1,
-		1, 1, -1
+		-1,-1,1,
+		-1,1,1,
+		-1,-1,-1,
+		-1,1,-1,
+		1,-1,1,
+		1,1,1,
+		1,-1,-1,
+		1,1,-1
 	],[
-		// front
-		0, 1, 3,
-		0, 3, 2,
-		// right
-		4, 5, 7,
-		4, 7, 6,
-		// back
-		8, 9, 11,
-		8, 11, 10,
-		// left
-		12, 13, 15,
-		12, 15, 14,
-		// bottom
-		16, 17, 19,
-		16, 19, 18,
-		// top
-		20, 21, 23,
-		20, 23, 22
+		1,2,0,
+		3,6,2,
+		7,4,6,
+		5,0,4,
+		6,0,2,
+		3,5,7,
+		1,3,2,
+		3,7,6,
+		7,5,4,
+		5,1,0,
+		6,4,0,
+		3,1,5
+	])
+}
+
+function createCross() {
+	return createModel([
+		0,0,.14,
+		.14,0,0,
+		-.14,0,0,
+		0,0,-.14,
+		.43,0,-.28,
+		.28,0,-.43,
+		-.28,0,.43,
+		-.43,0,.28,
+		.28,0,.43,
+		.43,0,.28,
+		-.43,0,-.28,
+		-.28,0,-.43,
+		0,.10,.14,
+		.14,.10,0,
+		-.14,.10,0,
+		0,.10,-.14,
+		.43,.10,-.28,
+		.28,.10,-.43,
+		-.28,.10,.43,
+		-.43,.10,.28,
+		.28,.10,.43,
+		.43,.10,.28,
+		-.43,.10,-.28,
+		-.28,.10,-.43
+	],[
+		2,1,0,
+		5,1,3,
+		6,2,0,
+		9,0,1,
+		10,3,2,
+		13,14,12,
+		13,17,15,
+		14,18,12,
+		12,21,13,
+		15,22,14,
+		9,20,8,
+		6,19,7,
+		11,15,3,
+		5,16,4,
+		8,12,0,
+		7,14,2,
+		2,22,10,
+		4,13,1,
+		1,21,9,
+		0,18,6,
+		3,17,5,
+		10,23,11,
+		13,15,14,
+		13,16,17,
+		14,19,18,
+		12,20,21,
+		15,23,22,
+		2,3,1,
+		5,4,1,
+		6,7,2,
+		9,8,0,
+		10,11,3,
+		9,21,20,
+		6,18,19,
+		11,23,15,
+		5,17,16,
+		8,20,12,
+		7,19,14,
+		2,14,22,
+		4,16,13,
+		1,13,21,
+		0,12,18,
+		3,15,17,
+		10,22,23
 	])
 }
 
@@ -756,11 +773,10 @@ function createEntities() {
 	let mat
 
 	mat = new FA(idMat)
-	rotate(mat, mat, .16, 0, 1, 0)
-	scale(mat, mat, 30, .1, 30)
+	scale(mat, mat, 30, 1, 30)
 	entities.push({
 		matrix: new FA(mat),
-		model: createGround(),
+		model: createPlane(),
 		color: [.3, .3, .3, 1]
 	})
 
@@ -778,7 +794,6 @@ function createEntities() {
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 0, 2, 0)
 	scale(mat, mat, .5, .5, .5)
 	entities.push({
 		origin: mat,
@@ -786,51 +801,16 @@ function createEntities() {
 		model: cubeModel,
 		color: [1, 1, 1, 1],
 		update: function(now) {
-			translate(this.matrix, this.origin, 0, 1 + M.sin(now * .001) * 2, 0)
+			translate(this.matrix, this.origin, 0, 4 + M.sin(now * .001), 0)
 			rotate(this.matrix, this.matrix, now * .001, 1, 1, 0)
 		}
 	})
 
 	mat = new FA(idMat)
-	translate(mat, mat, 3.5, 2.5, 0)
-	rotate(mat, mat, .5, 0, 1, 0)
-	scale(mat, mat, .5, .5, .5)
-	entities.push({
-		origin: mat,
-		matrix: new FA(mat),
-		model: cubeModel,
-		color: [1, 0, 1, 1],
-		update: function(now) {
-			const m = new FA(idMat)
-			rotate(m, idMat, now * .001, 1, 1, 0)
-			multiply(this.matrix, m, this.origin)
-		}
-	})
-
-	mat = new FA(idMat)
-	translate(mat, mat, 4, 1, 0)
 	entities.push(marker = {
-		origin: mat,
 		matrix: new FA(mat),
-		model: createTestModel(),
-		color: [1, 1, 0, 1],
-		update: function(now) {
-			rotate(this.matrix, this.origin, now * .001, 0, 1, 0)
-		}
-	})
-
-	mat = new FA(idMat)
-	translate(mat, mat, 5, 2, 3)
-	scale(mat, mat, .5, .5, .5)
-	entities.push({
-		origin: mat,
-		matrix: new FA(mat),
-		model: cubeModel,
-		color: [.8, .8, .8, 1],
-		update: function(now) {
-			rotate(this.matrix, this.origin, now * .001, 1, 0, 0)
-			translate(this.matrix, this.matrix, 0, 2, 0)
-		}
+		model: createCross(),
+		color: [1, 0, 1, 1]
 	})
 
 	entitiesLength = entities.length
