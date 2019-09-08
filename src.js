@@ -958,9 +958,8 @@ float decodeFloat(vec4 c) {
 
 void main() {
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
-	float shad = step(.5, intensity);
-	float light = shad * (.75 + step(shadowPos.z, depth) * .25) +
-		(1. - shad);
+	float res = step(.5, intensity);
+	float light = res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
 	float fog = z / far;
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
@@ -1088,7 +1087,7 @@ function init() {
 	const canvas = D.getElementById('Canvas')
 	gl = canvas.getContext('webgl')
 
-	setOrthogonal(lightProjMat, -10, 10, -10, 10, -20, 40)
+	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
 	lookAt(0, 0)
 
 	createShadowBuffer()
