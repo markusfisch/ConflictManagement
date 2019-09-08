@@ -41,7 +41,6 @@ let gl,
 	pointersLength,
 	pointersX = [],
 	pointersY = [],
-	keysDown = [],
 	drag = {},
 	marker
 
@@ -549,19 +548,6 @@ function pointerMove(event) {
 function pointerDown(event) {
 	setPointer(event, true)
 	startDrag()
-}
-
-function setKey(event, down) {
-	keysDown[event.keyCode] = down
-	event.stopPropagation()
-}
-
-function keyUp(event) {
-	setKey(event, false)
-}
-
-function keyDown(event) {
-	setKey(event, true)
 }
 
 function resize() {
@@ -1138,9 +1124,6 @@ function init() {
 
 	W.onresize = resize
 	resize()
-
-	D.onkeydown = keyDown
-	D.onkeyup = keyUp
 
 	D.onmousedown = pointerDown
 	D.onmousemove = pointerMove
