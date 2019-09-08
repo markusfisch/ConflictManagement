@@ -14,7 +14,6 @@ const M = Math,
 	modelViewMat = new FA(16),
 	findMat = new FA(16),
 	horizon = 50,
-	staticLightViewMat = new FA(16),
 	lightProjMat = new FA(idMat),
 	lightViewMat = new FA(idMat),
 	lightDirection = [0, 0, 0],
@@ -329,6 +328,7 @@ function drawCameraModel(count, uniforms, color) {
 }
 
 function setCameraModel(uniforms, mm) {
+	multiply(modelViewMat, viewMat, mm)
 	gl.uniformMatrix4fv(uniforms.modelViewMat, false, modelViewMat)
 }
 
@@ -350,7 +350,6 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 		multiply(modelViewMat, lightViewMat, mm)
 		gl.uniformMatrix4fv(uniforms.lightModelViewMat, false, modelViewMat)
 
-		multiply(modelViewMat, viewMat, mm)
 		setModel(uniforms, mm)
 		// the model matrix needs to be inverted and transposed to
 		// scale the normals correctly
