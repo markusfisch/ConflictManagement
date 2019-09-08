@@ -4,12 +4,11 @@ const M = Math,
 	D = document,
 	W = window,
 	FA = Float32Array,
-	idArray = [
+	idMat = new FA([
 		1, 0, 0, 0,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
-		0, 0, 0, 1],
-	idMat = new FA(idArray),
+		0, 0, 0, 1]),
 	projMat = new FA(idMat),
 	viewMat = new FA(idMat),
 	modelViewMat = new FA(16),
@@ -338,21 +337,16 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
 	gl.enableVertexAttribArray(attribs.uv)
-	gl.enableVertexAttribArray(attribs.boneIndex)
-	gl.enableVertexAttribArray(attribs.boneWeight)
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i],
 			model = e.model,
-			bones = e.bones,
 			mm = e.matrix
 
 		// attribs & buffers
 		gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 48, 0)
-		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 48, 12)
-		gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 48, 24)
-		gl.vertexAttribPointer(attribs.boneIndex, 2, gl.FLOAT, false, 48, 32)
-		gl.vertexAttribPointer(attribs.boneWeight, 2, gl.FLOAT, false, 48, 40)
+		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
+		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
+		gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
@@ -366,15 +360,12 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 		invert(modelViewMat, mm)
 		transpose(modelViewMat, modelViewMat)
 		gl.uniformMatrix4fv(uniforms.normalMat, false, modelViewMat)
-		gl.uniformMatrix4fv(uniforms['bones[0]'], false, bones)
 
 		drawModel(model.count, uniforms, e.color)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
 	gl.disableVertexAttribArray(attribs.uv)
-	gl.disableVertexAttribArray(attribs.boneIndex)
-	gl.disableVertexAttribArray(attribs.boneWeight)
 }
 
 function initView(buffer, w, h) {
@@ -625,19 +616,12 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function createModel(vertices, indicies, uvs, boneIndices, boneWeights) {
+function createModel(vertices, indicies, uvs) {
 	const ncoordinates = vertices.length,
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
 
 	uvs = uvs || new FA(vec2elements)
-	boneIndices = boneIndices || new FA(vec2elements)
-	if (!boneWeights) {
-		boneWeights = []
-		for (let i = vec2elements; i--;) {
-			boneWeights.push(.5)
-		}
-	}
 
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
@@ -650,10 +634,6 @@ function createModel(vertices, indicies, uvs, boneIndices, boneWeights) {
 		buffer.push(normals[n++])
 		buffer.push(uvs[p++])
 		buffer.push(uvs[p++])
-		buffer.push(boneIndices[i++])
-		buffer.push(boneIndices[i++])
-		buffer.push(boneWeights[w++])
-		buffer.push(boneWeights[w++])
 	}
 
 	model.buffer = gl.createBuffer()
@@ -792,46 +772,13 @@ function createCube() {
 		// top
 		20, 21, 23,
 		20, 23, 22
-	],null,[
-		// front
-		0, 0,
-		0, 0,
-		0, 0,
-		0, 1,
-		// right
-		0, 0,
-		0, 0,
-		0, 1,
-		0, 0,
-		// back
-		0, 0,
-		0, 0,
-		0, 0,
-		0, 0,
-		// left
-		0, 0,
-		0, 0,
-		0, 0,
-		0, 0,
-		// bottom
-		0, 0,
-		0, 0,
-		0, 0,
-		0, 0,
-		// top
-		0, 0,
-		0, 1,
-		0, 0,
-		0, 0
 	])
 }
 
 function createEntities() {
 	entities = []
 
-	const defaultBones = new FA([idArray, idArray].flat()),
-		cubeModel = createCube()
-
+	const cubeModel = createCube()
 	let mat
 
 	mat = new FA(idMat)
@@ -867,26 +814,6 @@ function createEntities() {
 		update: function(now) {
 			translate(this.matrix, this.origin, 0, 1 + M.sin(now * .001) * 2, 0)
 			rotate(this.matrix, this.matrix, now * .001, 1, 1, 0)
-		}
-	})
-
-	const b = new FA(defaultBones)
-	mat = new FA(idMat)
-	translate(mat, mat, -3, 2.5, 0)
-	scale(mat, mat, .5, .5, .5)
-	entities.push({
-		origin: mat,
-		matrix: new FA(mat),
-		model: cubeModel,
-		bones: b,
-		bp: [
-			new FA(b.buffer, 0, 16),
-			new FA(b.buffer, 64, 16)
-		],
-		color: [0, 1, 1, 1],
-		update: function(now) {
-			const t = M.abs(M.sin(now * .0005)) * 3
-			translate(this.bp[1], idMat, t, 0, t)
 		}
 	})
 
@@ -937,7 +864,6 @@ function createEntities() {
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
 		e.update = e.update || nop
-		e.bones = e.bones || defaultBones
 	}
 }
 
@@ -1011,26 +937,19 @@ precision mediump float;
 attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec2 uv;
-attribute vec2 boneIndex;
-attribute vec2 boneWeight;
 
 uniform mat4 lightProjMat;
 uniform mat4 lightModelViewMat;
 uniform vec3 lightDirection;
 uniform mat4 normalMat;
-uniform mat4 bones[2];
 
 varying float bias;
 
 void main() {
-	vec4 v = vec4(vertex, 1.);
-	v = ((bones[int(boneIndex.x)] * v) * boneWeight.x +
-			(bones[int(boneIndex.y)] * v) * boneWeight.y);
 	float intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
 	bias = .001 * (1. - intensity);
-	v.w = 1.;
-	gl_Position = lightProjMat * lightModelViewMat * v;
+	gl_Position = lightProjMat * lightModelViewMat * vec4(vertex, 1.);
 }`, lightFragmentShader = `${precision}
 varying float bias;
 
@@ -1044,8 +963,6 @@ void main() {
 attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec2 uv;
-attribute vec2 boneIndex;
-attribute vec2 boneWeight;
 
 uniform mat4 projMat;
 uniform mat4 modelViewMat;
@@ -1053,7 +970,6 @@ uniform mat4 normalMat;
 uniform mat4 lightModelViewMat;
 uniform mat4 lightProjMat;
 uniform vec3 lightDirection;
-uniform mat4 bones[2];
 
 varying float intensity;
 varying float z;
@@ -1069,9 +985,7 @@ const mat4 texUnitConverter = mat4(
 
 void main() {
 	vec4 v = vec4(vertex, 1.);
-	v = ((bones[int(boneIndex.x)] * v) * boneWeight.x +
-			(bones[int(boneIndex.y)] * v) * boneWeight.y);
-	gl_Position = projMat * modelViewMat * vec4(v.xyz, 1.);
+	gl_Position = projMat * modelViewMat * v;
 	z = gl_Position.z;
 	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
@@ -1127,18 +1041,17 @@ void main() {
 
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight'],
+		['vertex', 'normal'],
 		['normalMat',
-			'lightProjMat', 'lightModelViewMat', 'lightModelViewMat',
-			'bones[0]', 'bones[1]'])
+			'lightProjMat', 'lightModelViewMat', 'lightModelViewMat'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
-		['vertex', 'normal', 'boneIndex', 'boneWeight', 'uv'],
+		['vertex', 'normal', 'uv'],
 		['projMat', 'modelViewMat', 'normalMat',
 			'lightProjMat', 'lightModelViewMat', 'lightDirection',
-			'bones[0]', 'bones[1]', 'far', 'sky', 'color', 'shadowTexture'])
+			'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
 	cacheLocations(screenProgram,
