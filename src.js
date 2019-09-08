@@ -336,7 +336,6 @@ function setCameraModel(uniforms, mm) {
 function drawEntities(setModel, drawModel, attribs, uniforms) {
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
-	gl.enableVertexAttribArray(attribs.uv)
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i],
 			model = e.model,
@@ -344,9 +343,8 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 
 		// attribs & buffers
 		gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
-		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
-		gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
+		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
+		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 		// uniforms
@@ -365,7 +363,6 @@ function drawEntities(setModel, drawModel, attribs, uniforms) {
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
-	gl.disableVertexAttribArray(attribs.uv)
 }
 
 function initView(buffer, w, h) {
@@ -616,12 +613,10 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function createModel(vertices, indicies, uvs) {
+function createModel(vertices, indicies) {
 	const ncoordinates = vertices.length,
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
-
-	uvs = uvs || new FA(vec2elements)
 
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
@@ -632,8 +627,6 @@ function createModel(vertices, indicies, uvs) {
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
-		buffer.push(uvs[p++])
-		buffer.push(uvs[p++])
 	}
 
 	model.buffer = gl.createBuffer()
@@ -713,11 +706,6 @@ function createGround() {
 	],[
 		0, 1, 3,
 		0, 3, 2
-	],[
-		1, 1,
-		1, 0,
-		0, 1,
-		0, 0
 	])
 }
 
@@ -936,7 +924,6 @@ precision mediump float;
 #endif`, lightVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
-attribute vec2 uv;
 
 uniform mat4 lightProjMat;
 uniform mat4 lightModelViewMat;
@@ -962,7 +949,6 @@ void main() {
 }`, offscreenVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
-attribute vec2 uv;
 
 uniform mat4 projMat;
 uniform mat4 modelViewMat;
@@ -974,7 +960,6 @@ uniform vec3 lightDirection;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
-varying vec2 textureUV;
 
 const mat4 texUnitConverter = mat4(
 	.5, .0, .0, .0,
@@ -990,7 +975,6 @@ void main() {
 	intensity = max(0., dot(normalize(mat3(normalMat) * normal),
 		lightDirection));
 	shadowPos = texUnitConverter * lightProjMat * lightModelViewMat * v;
-	textureUV = uv;
 }`, offscreenFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
@@ -1000,7 +984,6 @@ uniform sampler2D shadowTexture;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
-varying vec2 textureUV;
 
 const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
 float decodeFloat(vec4 c) {
@@ -1008,15 +991,10 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
-	float grid = 1. / 20.;
-	float thrsh = grid * .5;
-	float ym = step(mod(textureUV.y, grid), thrsh) * thrsh;
-	grid = step(mod(textureUV.x + ym, grid), thrsh);
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
 	float shad = step(.5, intensity);
 	float light = shad * (.75 + step(shadowPos.z, depth) * .25) +
 		(1. - shad);
-	light *= max(1. - grid, .85);
 	float fog = z / far;
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
@@ -1048,7 +1026,7 @@ void main() {
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
-		['vertex', 'normal', 'uv'],
+		['vertex', 'normal'],
 		['projMat', 'modelViewMat', 'normalMat',
 			'lightProjMat', 'lightModelViewMat', 'lightDirection',
 			'far', 'sky', 'color', 'shadowTexture'])
