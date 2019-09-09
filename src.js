@@ -23,8 +23,7 @@ const M = Math,
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 9, 7],
 	spot = [0, 0, 0],
-	offscreenWidth = 256,
-	offscreenHeight = 256,
+	offscreenSize = 256,
 	shadowTextureSize = 1024
 
 let gl,
@@ -390,7 +389,7 @@ function drawScreen() {
 }
 
 function drawCameraView() {
-	initView(offscreenBuffer, offscreenWidth, offscreenHeight)
+	initView(offscreenBuffer, offscreenSize, offscreenSize)
 	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
 
 	gl.useProgram(offscreenProgram)
@@ -422,9 +421,8 @@ function drawShadowMap() {
 }
 
 function update() {
-	const now = Date.now()
 	for (let i = entitiesLength; i--;) {
-		entities[i].update(now)
+		entities[i].update()
 	}
 }
 
@@ -528,7 +526,7 @@ function pointerUp(event) {
 	} else {
 		if (!drag.dragging &&
 				findGroundSpot(spot, pointersX[0], pointersY[0])) {
-			translate(marker.matrix, idMat, -spot[0], spot[1], spot[2])
+			translate(marker.matrix, idMat, -spot[0], .1, spot[2])
 		}
 		stopDrag()
 	}
@@ -593,20 +591,11 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function contains(a, v) {
-	for (let i = 0, l = a.length; i < l; ++i) {
-		if (a[i] == v) {
-			return i
-		}
-	}
-	return -1
-}
-
 function makeVerticesUnique(vertices, indicies) {
 	const used = []
 	for (let i = 0, l = indicies.length; i < l; ++i) {
 		const idx = indicies[i]
-		if (contains(used, idx) > -1) {
+		if (used.includes(idx)) {
 			let offset = idx * 3
 			indicies[i] = vertices.length / 3
 			vertices.push(vertices[offset++])
@@ -864,51 +853,86 @@ function createCross() {
 	])
 }
 
+function substractAngles(a, b) {
+	const d = ((a - b) + M.TAU) % M.TAU
+	return d > M.PI ? d - M.TAU : d
+}
+
+function moveTo(out, x, z) {
+	const dx = x - out[12],
+		dz = z - out[14],
+		d = dx*dx + dz*dz
+	if (d > .1) {
+		const forward = M.atan2(out[10], out[8]),
+				bearing = M.atan2(dz, dx),
+				a = substractAngles(bearing, forward)
+		if (M.abs(a) > .1) {
+			rotate(findMat, idMat, -a, 0, 1, 0)
+			multiply(out, out, findMat)
+		}
+		translate(out, out, 0, 0, .2)
+	}
+}
+
 function createEntities() {
 	entities = []
 
-	const cubeModel = createCube()
-	let mat
+	const bevelledCubeModel = createBevelledCube(),
+		mat = new FA(idMat)
 
-	mat = new FA(idMat)
 	scale(mat, mat, 30, 1, 30)
 	entities.push({
 		matrix: new FA(mat),
 		model: createPlane(),
-		color: [.3, .3, .3, 1]
+		color: [.38, .79, .67, 1]
 	})
 
-	mat = new FA(idMat)
-	translate(mat, mat, 0, 1, 0)
-	scale(mat, mat, 3, .1, 3)
-	entities.push({
-		origin: mat,
-		matrix: new FA(mat),
-		model: cubeModel,
-		color: [.2, .4, .8, 1],
-		update: function(now) {
-			rotate(this.matrix, this.origin, -now * .0005, 0, 1, 0)
-		}
-	})
+	for (let i = 64; i--;) {
+		mat.set(idMat)
+		translate(mat, mat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
+		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
+		const s = .1 + M.random() * .3
+		scale(mat, mat, s, .1, s)
+		entities.push({
+			matrix: new FA(mat),
+			model: bevelledCubeModel,
+			color: [.18, .59, .47, 1]
+		})
+	}
 
-	mat = new FA(idMat)
-	scale(mat, mat, .5, .5, .5)
-	entities.push({
-		origin: mat,
+	mat.set(idMat)
+	scale(mat, mat, .4, .4, .4)
+	const head = {
+		matrix: new FA(idMat),
+		model: bevelledCubeModel,
+		color: [.1, .1, .1, 1]
+	}, body = {
 		matrix: new FA(mat),
-		model: cubeModel,
+		model: bevelledCubeModel,
 		color: [1, 1, 1, 1],
-		update: function(now) {
-			translate(this.matrix, this.origin, 0, 4 + M.sin(now * .001), 0)
-			rotate(this.matrix, this.matrix, now * .001, 1, 1, 0)
+		update: function() {
+			const tm = marker.matrix,
+				m = this.matrix
+			moveTo(m, tm[12], tm[14])
+			const hm = head.matrix
+			hm.set(m)
+			translate(hm, hm, 0, 0, 1)
+			scale(hm, hm, .2, .2, .2)
 		}
-	})
+	}
+	entities.push(head, body)
 
-	mat = new FA(idMat)
+	translate(mat, idMat, 0, -1, 0)
 	entities.push(marker = {
 		matrix: new FA(mat),
 		model: createCross(),
-		color: [1, 0, 1, 1]
+		color: [.99, .58, .87, 1],
+		update: function() {
+			const t = this.matrix
+			if (t[13] > -1) {
+				translate(t, t, 0, -.005, 0)
+			}
+		}
 	})
 
 	entitiesLength = entities.length
@@ -1140,7 +1164,7 @@ function createScreenBuffer() {
 }
 
 function createOffscreenBuffer() {
-	const buf = createFrameBuffer(offscreenWidth, offscreenHeight)
+	const buf = createFrameBuffer(offscreenSize, offscreenSize)
 	offscreenTexture = buf.tx
 	offscreenBuffer = buf.fb
 }
@@ -1173,8 +1197,7 @@ function lookAt(x, z) {
 }
 
 function init() {
-	const canvas = D.getElementById('Canvas')
-	gl = canvas.getContext('webgl')
+	gl = D.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
 	lookAt(0, 0)
