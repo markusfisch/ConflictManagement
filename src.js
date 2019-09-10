@@ -19,10 +19,13 @@ const M = Math,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
-	horizon = 50,
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 9, 7],
-	spot = [0, 0, 0],
+	pointerSpot = [0, 0, 0],
+	pointersX = [],
+	pointersY = [],
+	drag = {},
+	horizon = 50,
 	offscreenSize = 256,
 	shadowTextureSize = 1024
 
@@ -40,9 +43,6 @@ let gl,
 	entitiesLength,
 	entities = [],
 	pointersLength,
-	pointersX = [],
-	pointersY = [],
-	drag = {},
 	cross,
 	marker,
 	selected
@@ -590,15 +590,17 @@ function pointerUp(event) {
 		startDrag()
 	} else {
 		if (!drag.dragging &&
-				getGroundSpot(spot, pointersX[0], pointersY[0])) {
-			const e = getEntityNear(-spot[0], spot[2], .75, null, 'selectable')
+				getGroundSpot(pointerSpot, pointersX[0], pointersY[0])) {
+			const x = -pointerSpot[0],
+				z = pointerSpot[2],
+				e = getEntityNear(x, z, .75, null, 'selectable')
 			if (e) {
 				selected = e;
 				setMarker(e.matrix)
 			} else if (selected) {
-				translate(cross.matrix, idMat, -spot[0], .1, spot[2])
-				selected.targetX = -spot[0]
-				selected.targetZ = spot[2]
+				translate(cross.matrix, idMat, x, .1, z)
+				selected.targetX = x
+				selected.targetZ = z
 				selected.update = moveToTarget
 			}
 		}
