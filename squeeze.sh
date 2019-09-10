@@ -7,7 +7,7 @@ do
 		SRC=${SRC%%\"*}
 		[ -r "$SRC" ] && {
 			echo '<script>'
-			closurecompiler < "$SRC"
+			closurecompiler < "$SRC" | fgrep -v '$jscomp'
 			echo '</script>'
 			continue
 		}
