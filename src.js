@@ -9,10 +9,9 @@ const M = Math,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
 		0, 0, 0, 1]),
+	cacheMat = new FA(16),
 	viewMat = new FA(16),
 	lightViewMat = new FA(16),
-	findMat = new FA(16),
-	horizon = 50,
 	mats = new FA(80),
 	projMat = new FA(mats.buffer, 0, 16),
 	modelViewMat = new FA(mats.buffer, 64, 16),
@@ -20,6 +19,7 @@ const M = Math,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
+	horizon = 50,
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 9, 7],
 	spot = [0, 0, 0],
@@ -43,7 +43,9 @@ let gl,
 	pointersX = [],
 	pointersY = [],
 	drag = {},
-	marker
+	cross,
+	marker,
+	selected
 
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
@@ -329,32 +331,35 @@ function drawCameraModel(count, uniforms, color) {
 	drawShadowModel(count)
 }
 
+function drawEntity(drawModel, attribs, uniforms, matsLoc) {
+	const model = this.model,
+		mm = this.matrix
+
+	// attribs & buffers
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+
+	// uniforms
+	multiply(modelViewMat, viewMat, mm)
+	multiply(lightModelViewMat, lightViewMat, mm)
+
+	// the model matrix needs to be inverted and transposed to
+	// scale the normals correctly
+	invert(normalMat, mm)
+	transpose(normalMat, normalMat)
+
+	gl.uniformMatrix4fv(matsLoc, false, mats)
+	drawModel(model.count, uniforms, this.color)
+}
+
 function drawEntities(drawModel, attribs, uniforms) {
 	const matsLoc = uniforms['mats[0]']
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
 	for (let i = entitiesLength; i--;) {
-		const e = entities[i],
-			model = e.model,
-			mm = e.matrix
-
-		// attribs & buffers
-		gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-		gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
-		gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
-
-		// uniforms
-		multiply(modelViewMat, viewMat, mm)
-		multiply(lightModelViewMat, lightViewMat, mm)
-
-		// the model matrix needs to be inverted and transposed to
-		// scale the normals correctly
-		invert(normalMat, mm)
-		transpose(normalMat, normalMat)
-
-		gl.uniformMatrix4fv(matsLoc, false, mats)
-		drawModel(model.count, uniforms, e.color)
+		entities[i].draw(drawModel, attribs, uniforms, matsLoc)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
@@ -446,14 +451,14 @@ function rayGround(out, lx, ly, lz, dx, dy, dz) {
 	return false
 }
 
-function findGroundSpot(out, nx, ny) {
-	invert(findMat, projMat)
-	const cx = findMat[0]*nx + findMat[4]*ny + -findMat[8] + findMat[12],
-		cy = findMat[1]*nx + findMat[5]*ny + -findMat[9] + findMat[13]
-	invert(findMat, viewMat)
-	let x = findMat[0]*cx + findMat[4]*cy + -findMat[8],
-		y = findMat[1]*cx + findMat[5]*cy + -findMat[9],
-		z = findMat[2]*cx + findMat[6]*cy + -findMat[10],
+function getGroundSpot(out, nx, ny) {
+	invert(cacheMat, projMat)
+	const cx = cacheMat[0]*nx + cacheMat[4]*ny + -cacheMat[8] + cacheMat[12],
+		cy = cacheMat[1]*nx + cacheMat[5]*ny + -cacheMat[9] + cacheMat[13]
+	invert(cacheMat, viewMat)
+	let x = cacheMat[0]*cx + cacheMat[4]*cy + -cacheMat[8],
+		y = cacheMat[1]*cx + cacheMat[5]*cy + -cacheMat[9],
+		z = cacheMat[2]*cx + cacheMat[6]*cy + -cacheMat[10],
 		len = x*x + y*y + z*z
 	if (len > 0) {
 		len = 1 / M.sqrt(len)
@@ -461,7 +466,67 @@ function findGroundSpot(out, nx, ny) {
 	x *= len
 	y *= len
 	z *= len
-	return rayGround(out, -findMat[12], findMat[13], findMat[14], x, y, z)
+	return rayGround(out, -cacheMat[12], cacheMat[13], cacheMat[14], x, y, z)
+}
+
+function getEntityNear(x, z, sqr, ignore, trait) {
+	trait = trait || 'blocking'
+	for (let i = entitiesLength; i--;) {
+		const e = entities[i]
+		if (e == ignore || !e[trait]) {
+			continue
+		}
+		const m = e.matrix,
+			dx = x - m[12],
+			dz = z - m[14],
+			d = dx*dx + dz*dz
+		if (d < sqr) {
+			return e
+		}
+	}
+}
+
+function substractAngles(a, b) {
+	const d = ((a - b) + M.TAU) % M.TAU
+	return d > M.PI ? d - M.TAU : d
+}
+
+function moveTo(e, x, z) {
+	const mat = e.matrix,
+		mx = mat[12],
+		mz = mat[14],
+		dx = x - mx,
+		dz = z - mz,
+		d = dx*dx + dz*dz
+	if (d > .1) {
+		const forward = M.atan2(mat[10], mat[8]),
+				bearing = M.atan2(dz, dx),
+				a = substractAngles(bearing, forward)
+		if (M.abs(a) > .1) {
+			const obstacle = getEntityNear(mx, mz, 1.5, e)
+			rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
+			multiply(cacheMat, mat, cacheMat)
+		} else {
+			cacheMat.set(mat)
+		}
+		translate(cacheMat, cacheMat, 0, 0, .2)
+		if (getEntityNear(cacheMat[12], cacheMat[14], 1, e)) {
+			e.update = nop
+			return
+		}
+		mat.set(cacheMat)
+		e.setup()
+	} else {
+		e.update = nop
+	}
+}
+
+function moveToTarget() {
+	moveTo(this, this.targetX, this.targetZ)
+}
+
+function setMarker(m) {
+	marker.matrix.set(m)
 }
 
 function setPointer(event, down) {
@@ -509,9 +574,9 @@ function startDrag() {
 	stopDrag()
 	drag.x = pointersX[0]
 	drag.y = pointersY[0]
-	invert(findMat, viewMat)
-	drag.cx = findMat[12] - camPos[0]
-	drag.cz = findMat[14] - camPos[2]
+	invert(cacheMat, viewMat)
+	drag.cx = cacheMat[12] - camPos[0]
+	drag.cz = cacheMat[14] - camPos[2]
 }
 
 function pointerCancel(event) {
@@ -525,8 +590,17 @@ function pointerUp(event) {
 		startDrag()
 	} else {
 		if (!drag.dragging &&
-				findGroundSpot(spot, pointersX[0], pointersY[0])) {
-			translate(marker.matrix, idMat, -spot[0], .1, spot[2])
+				getGroundSpot(spot, pointersX[0], pointersY[0])) {
+			const e = getEntityNear(-spot[0], spot[2], .75, null, 'selectable')
+			if (e) {
+				selected = e;
+				setMarker(e.matrix)
+			} else if (selected) {
+				translate(cross.matrix, idMat, -spot[0], .1, spot[2])
+				selected.targetX = -spot[0]
+				selected.targetZ = spot[2]
+				selected.update = moveToTarget
+			}
 		}
 		stopDrag()
 	}
@@ -749,33 +823,105 @@ function createBevelledCube() {
 	])
 }
 
-function createCylinder() {
+function createMarker() {
 	return createModel([
-		0,-1,-.40,
-		0,1,-.40,
-		.34,-1,-.20,
-		.34,1,-.20,
-		.34,-1,.20,
-		.34,1,.20,
-		0,-1,.40,
-		0,1,.40,
-		-.34,-1,.20,
-		-.34,1,.20,
-		-.34,-1,-.20,
-		-.34,1,-.20
+		0,0,-2,
+		-1.41,0,-1.41,
+		-2,0,0,
+		-1.41,0,1.41,
+		0,0,2,
+		1.41,0,1.41,
+		2,0,0,
+		1.41,0,-1.41,
+		1.14,0,-1.14,
+		1.62,0,0,
+		1.14,0,1.14,
+		0,0,1.62,
+		-1.14,0,1.14,
+		-1.62,0,0,
+		-1.14,0,-1.14,
+		0,0,-1.62,
+		0,.21,-2,
+		-1.41,.21,-1.41,
+		-2,.21,0,
+		-1.41,.21,1.41,
+		0,.21,2,
+		1.41,.21,1.41,
+		2,.21,0,
+		1.41,.21,-1.41,
+		1.14,.21,-1.14,
+		1.62,.21,0,
+		1.14,.21,1.14,
+		0,.21,1.62,
+		-1.14,.21,1.14,
+		-1.62,.21,0,
+		-1.14,.21,-1.14,
+		0,.21,-1.62
 	],[
-		1,2,0,
-		3,4,2,
-		5,6,4,
-		7,8,6,
-		9,10,8,
-		11,0,10,
-		1,3,2,
-		3,5,4,
-		5,7,6,
-		7,9,8,
-		9,11,10,
-		11,1,0
+		11,4,3,
+		10,5,4,
+		8,7,6,
+		1,0,15,
+		9,6,5,
+		13,2,1,
+		12,3,2,
+		15,0,7,
+		19,20,27,
+		20,21,26,
+		22,23,24,
+		17,30,31,
+		22,25,26,
+		17,18,29,
+		18,19,28,
+		23,16,31,
+		9,10,26,
+		1,2,18,
+		2,3,19,
+		15,8,24,
+		3,4,20,
+		4,5,21,
+		8,9,25,
+		5,6,22,
+		14,15,31,
+		10,11,27,
+		6,7,23,
+		11,12,28,
+		12,13,29,
+		7,0,16,
+		13,14,30,
+		0,1,17,
+		11,3,12,
+		10,4,11,
+		8,6,9,
+		1,15,14,
+		9,5,10,
+		13,1,14,
+		12,2,13,
+		15,7,8,
+		19,27,28,
+		20,26,27,
+		22,24,25,
+		17,31,16,
+		22,26,21,
+		17,29,30,
+		18,28,29,
+		23,31,24,
+		9,26,25,
+		1,18,17,
+		2,19,18,
+		15,24,31,
+		3,20,19,
+		4,21,20,
+		8,25,24,
+		5,22,21,
+		14,31,30,
+		10,27,26,
+		6,23,22,
+		11,28,27,
+		12,29,28,
+		7,16,23,
+		13,30,29,
+		0,17,16
 	])
 }
 
@@ -853,25 +999,47 @@ function createCross() {
 	])
 }
 
-function substractAngles(a, b) {
-	const d = ((a - b) + M.TAU) % M.TAU
-	return d > M.PI ? d - M.TAU : d
-}
-
-function moveTo(out, x, z) {
-	const dx = x - out[12],
-		dz = z - out[14],
-		d = dx*dx + dz*dz
-	if (d > .1) {
-		const forward = M.atan2(out[10], out[8]),
-				bearing = M.atan2(dz, dx),
-				a = substractAngles(bearing, forward)
-		if (M.abs(a) > .1) {
-			rotate(findMat, idMat, d < 1 ? -a : -a * .1, 0, 1, 0)
-			multiply(out, out, findMat)
+function addFigure(x, z, bevelledCubeModel) {
+	const mat = new FA(idMat)
+	translate(mat, idMat, x, 0, z)
+	scale(mat, mat, .4, .4, .4)
+	const head = {
+		matrix: new FA(idMat),
+		model: bevelledCubeModel,
+		color: [.1, .1, .1, 1]
+	}, leftEye = {
+		matrix: new FA(idMat),
+		model: bevelledCubeModel,
+		color: [.1, .1, .1, 1]
+	}, rightEye = {
+		matrix: new FA(idMat),
+		model: bevelledCubeModel,
+		color: [.1, .1, .1, 1]
+	}, body = {
+		matrix: new FA(mat),
+		model: bevelledCubeModel,
+		color: [1, 1, 1, 1],
+		selectable: true,
+		blocking: true,
+		setup: function() {
+			const m = body.matrix,
+				hm = head.matrix
+			translate(hm, m, 0, 0, 1.1)
+			scale(hm, hm, .3, .3, .3)
+			const le = leftEye.matrix
+			translate(le, m, -.5, .7, .7)
+			scale(le, le, .2, .2, .2)
+			const re = rightEye.matrix
+			translate(re, m, .5, .7, .7)
+			scale(re, re, .2, .2, .2)
+			if (selected === this) {
+				setMarker(m)
+			}
 		}
-		translate(out, out, 0, 0, .2)
 	}
+	body.setup()
+	entities.push(head, leftEye, rightEye, body)
+	return body
 }
 
 function createEntities() {
@@ -891,8 +1059,8 @@ function createEntities() {
 		mat.set(idMat)
 		translate(mat, mat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
 		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
-		const s = .1 + M.random() * .3
-		scale(mat, mat, s, .1, s)
+		const s = .2 + M.random() * 1.8
+		scale(mat, mat, s, .01, s)
 		entities.push({
 			matrix: new FA(mat),
 			model: bevelledCubeModel,
@@ -900,46 +1068,46 @@ function createEntities() {
 		})
 	}
 
-	mat.set(idMat)
-	scale(mat, mat, .4, .4, .4)
-	const head = {
-		matrix: new FA(idMat),
-		model: bevelledCubeModel,
-		color: [.1, .1, .1, 1]
-	}, body = {
-		matrix: new FA(mat),
-		model: bevelledCubeModel,
-		color: [1, 1, 1, 1],
-		update: function() {
-			const tm = marker.matrix,
-				m = this.matrix
-			moveTo(m, tm[12], tm[14])
-			const hm = head.matrix
-			hm.set(m)
-			translate(hm, hm, 0, 0, 1)
-			scale(hm, hm, .2, .2, .2)
-		}
-	}
-	entities.push(head, body)
-
 	translate(mat, idMat, 0, -1, 0)
-	entities.push(marker = {
+	entities.push(cross = {
 		matrix: new FA(mat),
 		model: createCross(),
-		color: [.99, .58, .87, 1],
+		color: [1, 1, 1, 1],
 		update: function() {
-			const t = this.matrix
-			if (t[13] > -1) {
-				translate(t, t, 0, -.005, 0)
+			const m = this.matrix
+			if (m[13] > -1) {
+				translate(m, m, 0, -.005, 0)
 			}
 		}
 	})
+
+	entities.push(marker = {
+		matrix: new FA(idMat),
+		model: createMarker(),
+		color: [1, 1, 1, 1],
+		update: function() {
+			const m = this.matrix
+			if (m[13] > -1) {
+				rotate(m, m, .03, 0, 1, 0)
+			}
+		}
+	})
+
+	for (let z = -1; z <= 1; ++z) {
+		for (let x = -1; x <= 1; ++x) {
+			selected = addFigure(x * 1.5, z * 1.5, bevelledCubeModel)
+		}
+	}
+	setMarker(selected.matrix)
 
 	entitiesLength = entities.length
 
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
 		e.update = e.update || nop
+		e.draw = e.draw || drawEntity
+		e.selectable = e.selectable || false
+		e.blocking = e.blocking || false
 	}
 }
 
