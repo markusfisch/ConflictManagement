@@ -867,7 +867,7 @@ function moveTo(out, x, z) {
 				bearing = M.atan2(dz, dx),
 				a = substractAngles(bearing, forward)
 		if (M.abs(a) > .1) {
-			rotate(findMat, idMat, -a * .1, 0, 1, 0)
+			rotate(findMat, idMat, d < 1 ? -a : -a * .1, 0, 1, 0)
 			multiply(out, out, findMat)
 		}
 		translate(out, out, 0, 0, .2)
