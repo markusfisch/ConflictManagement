@@ -27,7 +27,8 @@ const M = Math,
 	drag = {},
 	horizon = 50,
 	offscreenSize = 256,
-	shadowTextureSize = 1024
+	shadowTextureSize = 1024,
+	piecesPerSide = 5
 
 let gl,
 	shadowBuffer,
@@ -42,7 +43,10 @@ let gl,
 	screenHeight,
 	entitiesLength,
 	entities = [],
+	enemies = [],
 	pointersLength,
+	enemyTurn,
+	moveMade,
 	cross,
 	marker,
 	selected
@@ -333,7 +337,7 @@ function drawCameraModel(count, uniforms, color) {
 
 function drawEntity(drawModel, attribs, uniforms, matsLoc) {
 	const model = this.model,
-		mm = this.matrix
+		mat = this.mat
 
 	// attribs & buffers
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
@@ -342,12 +346,12 @@ function drawEntity(drawModel, attribs, uniforms, matsLoc) {
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 	// uniforms
-	multiply(modelViewMat, viewMat, mm)
-	multiply(lightModelViewMat, lightViewMat, mm)
+	multiply(modelViewMat, viewMat, mat)
+	multiply(lightModelViewMat, lightViewMat, mat)
 
 	// the model matrix needs to be inverted and transposed to
 	// scale the normals correctly
-	invert(normalMat, mm)
+	invert(normalMat, mat)
 	transpose(normalMat, normalMat)
 
 	gl.uniformMatrix4fv(matsLoc, false, mats)
@@ -469,6 +473,9 @@ function getGroundSpot(out, nx, ny) {
 	return rayGround(out, -cacheMat[12], cacheMat[13], cacheMat[14], x, y, z)
 }
 
+// is it better to *not* have child/decoration entities in entities[]?
+// how about a enemies[] array for the player's pieces?
+// what advantage does it have to have all entities in entities[]?
 function getEntityNear(x, z, sqr, ignore, trait) {
 	trait = trait || 'blocking'
 	for (let i = entitiesLength; i--;) {
@@ -476,12 +483,83 @@ function getEntityNear(x, z, sqr, ignore, trait) {
 		if (e == ignore || !e[trait]) {
 			continue
 		}
-		const m = e.matrix,
+		const m = e.mat,
 			dx = x - m[12],
 			dz = z - m[14],
 			d = dx*dx + dz*dz
 		if (d < sqr) {
 			return e
+		}
+	}
+}
+
+function calculateEnemyTurn() {
+	let enemyWithGreatest,
+		enemyWithClosest,
+		minD = 1000,
+		maxD = 0
+	for (let i = piecesPerSide; i--;) {
+		const enemy = enemies[i],
+			em = enemy.mat,
+			x = em[12],
+			z = em[14]
+		let enemyMinD = 1000,
+			enemyMaxD = 0,
+			closest,
+			farest
+		for (let j = entitiesLength; j--;) {
+			const e = entities[j]
+			if (e == enemy || !e.selectable) {
+				continue
+			}
+			const m = e.mat,
+				dx = x - m[12],
+				dz = z - m[14],
+				d = dx*dx + dz*dz
+			if (d < enemyMinD) {
+				enemyMinD = d
+				closest = e
+			}
+			if (d > enemyMaxD) {
+				enemyMaxD = d
+				farest = e
+			}
+		}
+		if (enemyMinD < minD) {
+			minD = enemyMinD
+			enemyWithClosest = enemy
+		}
+		if (enemyMaxD > maxD) {
+			maxD = enemyMaxD
+			enemyWithGreatest = enemy
+		}
+		enemy.closest = closest
+		enemy.farest = farest
+	}
+	const dist = M.sqrt(minD)
+	if (dist < 4 && dist > 2) {
+		const e = enemyWithClosest.closest
+		enemyWithClosest.targetX = e.mat[12]
+		enemyWithClosest.targetZ = e.mat[14]
+		enemyWithClosest.update = moveToTarget
+	} else {
+		const e = enemyWithGreatest
+		enemyWithGreatest.targetX = M.random() * 10 - 5
+		enemyWithGreatest.targetZ = M.random() * 10 - 5
+		enemyWithGreatest.update = moveToTarget
+	}
+	moveMade = true
+}
+
+function stopMove(e) {
+	if (e.update != nop) {
+		e.update = nop
+		if (moveMade) {
+			moveMade = false
+			enemyTurn = e.selectable
+			if (enemyTurn) {
+				calculateEnemyTurn()
+			}
 		}
 	}
 }
@@ -492,7 +570,7 @@ function substractAngles(a, b) {
 }
 
 function moveTo(e, x, z) {
-	const mat = e.matrix,
+	const mat = e.mat,
 		mx = mat[12],
 		mz = mat[14],
 		dx = x - mx,
@@ -511,13 +589,14 @@ function moveTo(e, x, z) {
 		}
 		translate(cacheMat, cacheMat, 0, 0, .2)
 		if (getEntityNear(cacheMat[12], cacheMat[14], 1, e)) {
-			e.update = nop
+			stopMove(e)
 			return
 		}
+		moveMade = true
 		mat.set(cacheMat)
 		e.setup()
 	} else {
-		e.update = nop
+		stopMove(e)
 	}
 }
 
@@ -526,7 +605,7 @@ function moveToTarget() {
 }
 
 function setMarker(m) {
-	marker.matrix.set(m)
+	marker.mat.set(m)
 }
 
 function setPointer(event, down) {
@@ -589,16 +668,16 @@ function pointerUp(event) {
 	if (pointersLength > 0) {
 		startDrag()
 	} else {
-		if (!drag.dragging &&
+		if (!drag.dragging && !enemyTurn &&
 				getGroundSpot(pointerSpot, pointersX[0], pointersY[0])) {
 			const x = -pointerSpot[0],
 				z = pointerSpot[2],
 				e = getEntityNear(x, z, .75, null, 'selectable')
 			if (e) {
 				selected = e;
-				setMarker(e.matrix)
+				setMarker(e.mat)
 			} else if (selected) {
-				translate(cross.matrix, idMat, x, .1, z)
+				translate(cross.mat, idMat, x, .1, z)
 				selected.targetX = x
 				selected.targetZ = z
 				selected.update = moveToTarget
@@ -1001,37 +1080,38 @@ function createCross() {
 	])
 }
 
-function addFigure(x, z, bevelledCubeModel) {
+function addPiece(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
 	const mat = new FA(idMat)
 	translate(mat, idMat, x, 0, z)
+	selectable && rotate(mat, mat, M.PI, 0, 1, 0)
 	scale(mat, mat, .4, .4, .4)
 	const head = {
-		matrix: new FA(idMat),
+		mat: new FA(idMat),
 		model: bevelledCubeModel,
-		color: [.1, .1, .1, 1]
+		color: limbColor
 	}, leftEye = {
-		matrix: new FA(idMat),
+		mat: new FA(idMat),
 		model: bevelledCubeModel,
-		color: [.1, .1, .1, 1]
+		color: limbColor
 	}, rightEye = {
-		matrix: new FA(idMat),
+		mat: new FA(idMat),
 		model: bevelledCubeModel,
-		color: [.1, .1, .1, 1]
+		color: limbColor
 	}, body = {
-		matrix: new FA(mat),
+		mat: new FA(mat),
 		model: bevelledCubeModel,
-		color: [1, 1, 1, 1],
-		selectable: true,
+		color: bodyColor,
+		selectable: selectable,
 		blocking: true,
 		setup: function() {
-			const m = body.matrix,
-				hm = head.matrix
+			const m = body.mat,
+				hm = head.mat,
+				le = leftEye.mat,
+				re = rightEye.mat
 			translate(hm, m, 0, 0, 1.1)
 			scale(hm, hm, .3, .3, .3)
-			const le = leftEye.matrix
 			translate(le, m, -.5, .7, .7)
 			scale(le, le, .2, .2, .2)
-			const re = rightEye.matrix
 			translate(re, m, .5, .7, .7)
 			scale(re, re, .2, .2, .2)
 			if (selected === this) {
@@ -1052,7 +1132,7 @@ function createEntities() {
 
 	scale(mat, mat, 30, 1, 30)
 	entities.push({
-		matrix: new FA(mat),
+		mat: new FA(mat),
 		model: createPlane(),
 		color: [.38, .79, .67, 1]
 	})
@@ -1064,7 +1144,7 @@ function createEntities() {
 		const s = .2 + M.random() * 1.8
 		scale(mat, mat, s, .01, s)
 		entities.push({
-			matrix: new FA(mat),
+			mat: new FA(mat),
 			model: bevelledCubeModel,
 			color: [.18, .59, .47, 1]
 		})
@@ -1072,11 +1152,11 @@ function createEntities() {
 
 	translate(mat, idMat, 0, -1, 0)
 	entities.push(cross = {
-		matrix: new FA(mat),
+		mat: new FA(mat),
 		model: createCross(),
 		color: [1, 1, 1, 1],
 		update: function() {
-			const m = this.matrix
+			const m = this.mat
 			if (m[13] > -1) {
 				translate(m, m, 0, -.005, 0)
 			}
@@ -1084,23 +1164,31 @@ function createEntities() {
 	})
 
 	entities.push(marker = {
-		matrix: new FA(idMat),
+		mat: new FA(idMat),
 		model: createMarker(),
 		color: [1, 1, 1, 1],
 		update: function() {
-			const m = this.matrix
+			const m = this.mat
 			if (m[13] > -1) {
 				rotate(m, m, .03, 0, 1, 0)
 			}
 		}
 	})
 
-	for (let z = -1; z <= 1; ++z) {
-		for (let x = -1; x <= 1; ++x) {
-			selected = addFigure(x * 1.5, z * 1.5, bevelledCubeModel)
-		}
+	moveMade = enemyTurn = false
+	enemies = []
+	const black = [.1, .1, .1, 1],
+		white = [1, 1, 1, 1],
+		half = piecesPerSide >> 1
+	for (let x = -half, z = -4; x <= half; ++x) {
+		enemies.push(addPiece(x * 2, z + (x & 1 ? -1 : 0),
+			bevelledCubeModel, black, white, false))
 	}
-	setMarker(selected.matrix)
+	for (let x = -half, z = 2; x <= half; ++x) {
+		selected = addPiece(x * 2, z + (x & 1 ? 1 : 0),
+			bevelledCubeModel, white, black, true)
+	}
+	setMarker(selected.mat)
 
 	entitiesLength = entities.length
 
