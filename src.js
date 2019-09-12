@@ -27,8 +27,7 @@ const M = Math,
 	drag = {},
 	horizon = 50,
 	offscreenSize = 256,
-	shadowTextureSize = 1024,
-	piecesPerSide = 5
+	shadowTextureSize = 1024
 
 let gl,
 	shadowBuffer,
@@ -41,15 +40,19 @@ let gl,
 	screenProgram,
 	screenWidth,
 	screenHeight,
+	pointersLength,
 	entitiesLength,
 	entities = [],
-	enemies = [],
-	pointersLength,
+	blockablesLength,
+	blockables = [],
+	playerUnits,
+	enemyUnits,
 	enemyTurn,
 	moveMade,
 	cross,
 	marker,
-	selected
+	selected,
+	gameOver
 
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
@@ -473,95 +476,183 @@ function getGroundSpot(out, nx, ny) {
 	return rayGround(out, -cacheMat[12], cacheMat[13], cacheMat[14], x, y, z)
 }
 
-// is it better to *not* have child/decoration entities in entities[]?
-// how about a enemies[] array for the player's pieces?
-// what advantage does it have to have all entities in entities[]?
-function getEntityNear(x, z, sqr, ignore, trait) {
-	trait = trait || 'blocking'
-	for (let i = entitiesLength; i--;) {
-		const e = entities[i]
-		if (e == ignore || !e[trait]) {
-			continue
-		}
-		const m = e.mat,
-			dx = x - m[12],
-			dz = z - m[14],
-			d = dx*dx + dz*dz
-		if (d < sqr) {
+function dist(m, x, z) {
+	const dx = m[12] - x,
+		dz = m[14] - z
+	return dx*dx + dz*dz
+}
+
+function getBlockableNear(x, z, sqr, ignore) {
+	for (let i = 0; i < blockablesLength; ++i) {
+		const e = blockables[i]
+		if (e != ignore && dist(e.mat, x, z) < sqr) {
 			return e
 		}
 	}
 }
 
+function getSelectableNear(x, z) {
+	for (let i = 0; i < playerUnits; ++i) {
+		const e = blockables[i]
+		if (e.selectable && dist(e.mat, x, z) < .75) {
+			return e
+		}
+	}
+}
+
+function collides(ox, oy, rx, ry, cx, cy) {
+	const dcx = cx - ox,
+		dcy = cy - oy,
+		mag = rx*rx + ry*ry
+	let px = rx,
+		py = ry
+	if (mag > 0) {
+		const dp = (dcx*rx + dcy*ry) / mag
+		px *= dp
+		py *= dp
+	}
+	const nx = ox + px,
+		ny = oy + py,
+		dx = nx - cx,
+		dy = ny - cy,
+		d = dx*dx + dy*dy
+	return d < .5 && px*rx + py*ry >= 0
+}
+
+function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
+	let blockable,
+		maxD = rx*rx + rz*rz,
+		minD = 1000
+	for (let i = 0; i < blockablesLength; ++i) {
+		const b = blockables[i]
+		if (b == ignore) {
+			continue
+		}
+		const bm = b.mat,
+			dx = bm[12] - ox,
+			dz = bm[14] - oz,
+			d = dx*dx + dz*dz
+		if (d <= maxD && d < minD &&
+				collides(ox, oz, rx, rz, bm[12], bm[14])) {
+			minD = d
+			blockable = b
+		}
+	}
+	return blockable
+}
+
+function getRandomEnemy() {
+	let r = M.random() * enemyUnits | 0
+	for (let i = 0; i < enemyUnits; ++i) {
+		const b = blockables[playerUnits + (r++ % enemyUnits)]
+		if (b.life > 0) {
+			return b
+		}
+	}
+}
+
 function calculateEnemyTurn() {
-	let enemyWithGreatest,
-		enemyWithClosest,
-		minD = 1000,
-		maxD = 0
-	for (let i = piecesPerSide; i--;) {
-		const enemy = enemies[i],
-			em = enemy.mat,
-			x = em[12],
-			z = em[14]
-		let enemyMinD = 1000,
-			enemyMaxD = 0,
-			closest,
-			farest
-		for (let j = entitiesLength; j--;) {
-			const e = entities[j]
-			if (e == enemy || !e.selectable) {
+	let alive = 0,
+		agent,
+		minD = 1000
+	for (let i = playerUnits, l = i + enemyUnits; i < l; ++i) {
+		const e = blockables[i]
+		if (e.life < 1) {
+			continue
+		}
+		++alive
+		const em = e.mat,
+			ex = em[12],
+			ez = em[14]
+		for (let j = 0; j < playerUnits; ++j) {
+			const p = blockables[j]
+			if (p.life < 1) {
 				continue
 			}
-			const m = e.mat,
-				dx = x - m[12],
-				dz = z - m[14],
-				d = dx*dx + dz*dz
-			if (d < enemyMinD) {
-				enemyMinD = d
-				closest = e
+			const pm = p.mat,
+				px = pm[12],
+				pz = pm[14],
+				dx = px - ex,
+				dz = pz - ez,
+				d = dx*dx + dz*dz,
+				b = getFirstBlockableFrom(ex, ez, dx, dz, e)
+			if (d < minD && b == p) {
+				agent = e
+				agent.targetX = px
+				agent.targetZ = pz
+				minD = d
 			}
-			if (d > enemyMaxD) {
-				enemyMaxD = d
-				farest = e
-			}
 		}
-		if (enemyMinD < minD) {
-			minD = enemyMinD
-			enemyWithClosest = enemy
-		}
-		if (enemyMaxD > maxD) {
-			maxD = enemyMaxD
-			enemyWithGreatest = enemy
-		}
-		enemy.closest = closest
-		enemy.farest = farest
 	}
-	const dist = M.sqrt(minD)
-	if (dist < 4 && dist > 2) {
-		const e = enemyWithClosest.closest
-		enemyWithClosest.targetX = e.mat[12]
-		enemyWithClosest.targetZ = e.mat[14]
-		enemyWithClosest.update = moveToTarget
-	} else {
-		const e = enemyWithGreatest
-		enemyWithGreatest.targetX = M.random() * 10 - 5
-		enemyWithGreatest.targetZ = M.random() * 10 - 5
-		enemyWithGreatest.update = moveToTarget
+	if (alive > 0) {
+		if (!agent && (agent = getRandomEnemy())) {
+			const am = agent.mat,
+				ax = am[12],
+				az = am[14]
+			let tx, tz, tries = 0
+			do {
+				tx = ax + M.random() * 10 - 5
+				tz = az + M.random() * 10 - 5
+			} while (tries++ < 10 &&
+				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
+					getBlockableNear(tx, tz, 1, agent)))
+			agent.targetX = tx
+			agent.targetZ = tz
+		}
+		agent.update = moveToTarget
 	}
 	moveMade = true
 }
 
-function stopMove(e) {
+function endTurn(e) {
 	if (e.update != nop) {
 		e.update = nop
 		if (moveMade) {
 			moveMade = false
 			enemyTurn = e.selectable
-			if (enemyTurn) {
+			if (enemyTurn && !gameOver) {
 				calculateEnemyTurn()
 			}
 		}
 	}
+}
+
+function getNextAliveUnit(from, to) {
+	for (let i = from; i < to; ++i) {
+		const b = blockables[i]
+		if (b.life > 0) {
+			return b
+		}
+	}
+}
+
+function attack(attacker, victim) {
+	if (--victim.life < 1) {
+		let from, to
+		if (victim.selectable) {
+			from = 0
+			to = playerUnits
+		} else {
+			from = playerUnits
+			to = from + enemyUnits
+		}
+		victim.die()
+		const next = getNextAliveUnit(from, to)
+		if (victim == selected) {
+			if (next) {
+				selected = next
+				setMarker(selected.mat)
+			} else {
+				translate(cacheMat, idMat, 0, -1, 0)
+				setMarker(cacheMat)
+			}
+		}
+		if (!next) {
+			gameOver = true
+			return
+		}
+	}
+	endTurn(attacker)
 }
 
 function substractAngles(a, b) {
@@ -581,22 +672,29 @@ function moveTo(e, x, z) {
 				bearing = M.atan2(dz, dx),
 				a = substractAngles(bearing, forward)
 		if (M.abs(a) > .1) {
-			const obstacle = getEntityNear(mx, mz, 1.5, e)
+			const obstacle = getBlockableNear(mx, mz, 1.5, e)
 			rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
 			multiply(cacheMat, mat, cacheMat)
 		} else {
 			cacheMat.set(mat)
 		}
 		translate(cacheMat, cacheMat, 0, 0, .2)
-		if (getEntityNear(cacheMat[12], cacheMat[14], 1, e)) {
-			stopMove(e)
+		const blockable = getBlockableNear(cacheMat[12], cacheMat[14], 1, e)
+		if (blockable) {
+			if (blockable.life > 0 &&
+					blockable.selectable != e.selectable) {
+				moveMade = true
+				attack(e, blockable)
+			} else {
+				endTurn(e)
+			}
 			return
 		}
 		moveMade = true
 		mat.set(cacheMat)
 		e.setup()
 	} else {
-		stopMove(e)
+		endTurn(e)
 	}
 }
 
@@ -638,7 +736,7 @@ function dragCamera() {
 	const dx = pointersX[0] - drag.x,
 		dy = pointersY[0] - drag.y,
 		d = dx*dx + dy*dy,
-		f = 8
+		f = 8 * drag.mod
 	if (d > .001) {
 		lookAt(drag.cx + dx * f, drag.cz + dy * f)
 		drag.dragging = true
@@ -668,11 +766,11 @@ function pointerUp(event) {
 	if (pointersLength > 0) {
 		startDrag()
 	} else {
-		if (!drag.dragging && !enemyTurn &&
+		if (!drag.dragging && !enemyTurn && !moveMade && !gameOver &&
 				getGroundSpot(pointerSpot, pointersX[0], pointersY[0])) {
 			const x = -pointerSpot[0],
 				z = pointerSpot[2],
-				e = getEntityNear(x, z, .75, null, 'selectable')
+				e = getSelectableNear(x, z)
 			if (e) {
 				selected = e;
 				setMarker(e.mat)
@@ -700,8 +798,9 @@ function pointerDown(event) {
 function resize() {
 	gl.canvas.width = screenWidth = gl.canvas.clientWidth
 	gl.canvas.height = screenHeight = gl.canvas.clientHeight
-	setPerspective(projMat, M.PI * .125, screenWidth / screenHeight, .1,
-		horizon)
+	const aspect = screenWidth / screenHeight
+	drag.mod = aspect
+	setPerspective(projMat, M.PI * .125, aspect, .1, horizon)
 }
 
 function calculateNormals(vertices, indicies) {
@@ -1080,7 +1179,7 @@ function createCross() {
 	])
 }
 
-function addPiece(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
+function addUnit(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
 	const mat = new FA(idMat)
 	translate(mat, idMat, x, 0, z)
 	selectable && rotate(mat, mat, M.PI, 0, 1, 0)
@@ -1102,7 +1201,13 @@ function addPiece(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
 		model: bevelledCubeModel,
 		color: bodyColor,
 		selectable: selectable,
-		blocking: true,
+		life: 1,
+		die: function() {
+			body.color = head.color = leftEye.color = rightEye.color =
+				[.8, .2, 0, 1]
+			this.selectable = false
+			this.life = 0
+		},
 		setup: function() {
 			const m = body.mat,
 				hm = head.mat,
@@ -1126,6 +1231,10 @@ function addPiece(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
 
 function createEntities() {
 	entities = []
+	blockables = []
+	gameOver = moveMade = enemyTurn = false
+	playerUnits = 5
+	enemyUnits = 6
 
 	const bevelledCubeModel = createBevelledCube(),
 		mat = new FA(idMat)
@@ -1137,9 +1246,9 @@ function createEntities() {
 		color: [.38, .79, .67, 1]
 	})
 
+	// some floor decoration that should better be in a shader
 	for (let i = 64; i--;) {
-		mat.set(idMat)
-		translate(mat, mat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
+		translate(mat, idMat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
 		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
 		const s = .2 + M.random() * 1.8
 		scale(mat, mat, s, .01, s)
@@ -1175,21 +1284,44 @@ function createEntities() {
 		}
 	})
 
-	moveMade = enemyTurn = false
-	enemies = []
 	const black = [.1, .1, .1, 1],
-		white = [1, 1, 1, 1],
-		half = piecesPerSide >> 1
-	for (let x = -half, z = -4; x <= half; ++x) {
-		enemies.push(addPiece(x * 2, z + (x & 1 ? -1 : 0),
-			bevelledCubeModel, black, white, false))
+		white = [1, 1, 1, 1]
+	
+	for (let o = playerUnits >> 1, x = -o, z = 6; x <= o; ++x) {
+		blockables.push(addUnit(x * 2, z + (x & 1 ? 2 : 0),
+			bevelledCubeModel, white, black, true))
 	}
-	for (let x = -half, z = 2; x <= half; ++x) {
-		selected = addPiece(x * 2, z + (x & 1 ? 1 : 0),
-			bevelledCubeModel, white, black, true)
-	}
+
+	selected = blockables[blockables.length - 1]
 	setMarker(selected.mat)
 
+	for (let o = enemyUnits >> 1, x = -o, z = -6; x <= o; ++x) {
+		blockables.push(addUnit(x * 2, z + (x & 1 ? -2 : 0),
+			bevelledCubeModel, black, white, false))
+	}
+
+	// add some obstacles
+	const cubeModel = createCube()
+	for (let i = 16; i--;) {
+		blockablesLength = blockables.length 
+		let x, z
+		do {
+			x = M.random() * 30 - 15
+			z = M.random() * 30 - 15
+		} while (getBlockableNear(x, z, 4))
+		translate(mat, idMat, x, 0, z)
+		rotate(mat, mat, M.random() * M.TAU, 1, 1, 1)
+		scale(mat, mat, .5, .5, .5)
+		const blockable = {
+			mat: new FA(mat),
+			model: cubeModel,
+			color: [0, .29, .17, 1]
+		}
+		entities.push(blockable)
+		blockables.push(blockable)
+	}
+
+	blockablesLength = blockables.length 
 	entitiesLength = entities.length
 
 	for (let i = entitiesLength; i--;) {
@@ -1197,7 +1329,6 @@ function createEntities() {
 		e.update = e.update || nop
 		e.draw = e.draw || drawEntity
 		e.selectable = e.selectable || false
-		e.blocking = e.blocking || false
 	}
 }
 
@@ -1458,7 +1589,7 @@ function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
-	lookAt(0, 0)
+	lookAt(0, 6)
 
 	createShadowBuffer()
 	createOffscreenBuffer()
