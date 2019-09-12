@@ -516,7 +516,7 @@ function collides(ox, oy, rx, ry, cx, cy) {
 		dx = nx - cx,
 		dy = ny - cy,
 		d = dx*dx + dy*dy
-	return d < .5 && px*rx + py*ry >= 0
+	return d < .75 && px*rx + py*ry >= 0
 }
 
 function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
@@ -672,21 +672,47 @@ function moveTo(e, x, z) {
 				bearing = M.atan2(dz, dx),
 				a = substractAngles(bearing, forward)
 		if (M.abs(a) > .1) {
-			const obstacle = getBlockableNear(mx, mz, 1.5, e)
+			const obstacle = getBlockableNear(mx, mz, 3, e)
 			rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
 			multiply(cacheMat, mat, cacheMat)
 		} else {
 			cacheMat.set(mat)
 		}
 		translate(cacheMat, cacheMat, 0, 0, .2)
-		const blockable = getBlockableNear(cacheMat[12], cacheMat[14], 1, e)
+		const nx = cacheMat[12],
+			nz = cacheMat[14]
+		let blockable, attackable
+		for (let i = blockablesLength; i-- && !blockable && !attackable;) {
+			const b = blockables[i],
+				bm = b.mat,
+				bx = bm[12],
+				bz = bm[14],
+				bdx = nx - bx,
+				bdz = nz - bz,
+				bd = bdx*bdx + bdz*bdz
+			if (b == e) {
+				continue
+			}
+			if (!blockable && bd < .5) {
+				blockable = b
+			}
+			if (!attackable && bd < 1 && b.selectable != e.selectable &&
+					b.life > 0) {
+				attackable = b
+			}
+		}
+		if (attackable) {
+			moveMade = true
+			mat.set(cacheMat)
+			e.setup()
+			attack(e, attackable)
+			return
+		}
 		if (blockable) {
-			if (blockable.life > 0 &&
-					blockable.selectable != e.selectable) {
-				moveMade = true
-				attack(e, blockable)
-			} else {
+			if (moveMade) {
 				endTurn(e)
+			} else {
+				e.update = nop
 			}
 			return
 		}
@@ -1277,6 +1303,7 @@ function createEntities() {
 		model: createMarker(),
 		color: [1, 1, 1, 1],
 		update: function() {
+			this.draw = enemyTurn ? nop : drawEntity
 			const m = this.mat
 			if (m[13] > -1) {
 				rotate(m, m, .03, 0, 1, 0)
@@ -1287,7 +1314,8 @@ function createEntities() {
 	const black = [.1, .1, .1, 1],
 		white = [1, 1, 1, 1]
 	
-	for (let o = playerUnits >> 1, x = -o, z = 6; x <= o; ++x) {
+	for (let o = playerUnits >> 1, x = -o, z = 4, i = 0;
+			i < playerUnits && x <= o; ++x, ++i) {
 		blockables.push(addUnit(x * 2, z + (x & 1 ? 2 : 0),
 			bevelledCubeModel, white, black, true))
 	}
@@ -1295,7 +1323,8 @@ function createEntities() {
 	selected = blockables[blockables.length - 1]
 	setMarker(selected.mat)
 
-	for (let o = enemyUnits >> 1, x = -o, z = -6; x <= o; ++x) {
+	for (let o = enemyUnits >> 1, x = -o, z = -4, i = 0;
+			i < enemyUnits && x <= o; ++x, ++i) {
 		blockables.push(addUnit(x * 2, z + (x & 1 ? -2 : 0),
 			bevelledCubeModel, black, white, false))
 	}
@@ -1589,7 +1618,7 @@ function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
-	lookAt(0, 6)
+	lookAt(0, 3)
 
 	createShadowBuffer()
 	createOffscreenBuffer()
