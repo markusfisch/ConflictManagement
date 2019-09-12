@@ -401,8 +401,8 @@ function drawScreen() {
 }
 
 function drawCameraView() {
-	initView(offscreenBuffer, offscreenSize, offscreenSize)
 	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
+	initView(offscreenBuffer, offscreenSize, offscreenSize)
 
 	gl.useProgram(offscreenProgram)
 	const attribs = offscreenProgram.attribs,
