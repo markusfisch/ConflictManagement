@@ -1269,10 +1269,11 @@ function createEntities() {
 	entities.push({
 		mat: new FA(mat),
 		model: createPlane(),
-		color: [.38, .79, .67, 1]
+		color: [.89, .77, .52, 1]
 	})
 
 	// some floor decoration that should better be in a shader
+	const patchColor = [.79, .67, .42, 1]
 	for (let i = 64; i--;) {
 		translate(mat, idMat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
 		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
@@ -1281,7 +1282,7 @@ function createEntities() {
 		entities.push({
 			mat: new FA(mat),
 			model: bevelledCubeModel,
-			color: [.18, .59, .47, 1]
+			color: patchColor
 		})
 	}
 
@@ -1330,7 +1331,8 @@ function createEntities() {
 	}
 
 	// add some obstacles
-	const cubeModel = createCube()
+	const cubeModel = createCube(),
+		rockColor = [.59, .47, .22, 1]
 	for (let i = 16; i--;) {
 		blockablesLength = blockables.length 
 		let x, z
@@ -1344,7 +1346,7 @@ function createEntities() {
 		const blockable = {
 			mat: new FA(mat),
 			model: cubeModel,
-			color: [0, .29, .17, 1]
+			color: rockColor
 		}
 		entities.push(blockable)
 		blockables.push(blockable)
