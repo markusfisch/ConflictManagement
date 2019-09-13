@@ -1603,7 +1603,7 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 			translate(lam, lam, armDist, -armOffset, 0)
 			rotate(ram, cacheMat, angle, 1, 0, 0)
 			translate(ram, ram, -armDist, -armOffset, 0)
-			this.finish()
+			translate(cm, ram, 0, .7, .5)
 		},
 		finish: function() {
 			translate(cm, ram, 0, .7, .5)
