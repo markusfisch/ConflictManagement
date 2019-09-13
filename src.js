@@ -1705,8 +1705,8 @@ function createEntities() {
 
 	// add some obstacles
 	const rockModel = createRock(),
-		rockColor = [.53, .47, .32, 1]
-	for (let i = 16; i--;) {
+		rockColor = [.33, .27, .12, 1]
+	for (let i = 20; i--;) {
 		blockablesLength = blockables.length
 		let x, z
 		do {
