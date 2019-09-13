@@ -20,7 +20,7 @@ const M = Math,
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
 	skyColor = [.06, .06, .06, 1],
-	camPos = [0, 9, 7],
+	camPos = [0, 10, 8],
 	pointerSpot = [0, 0, 0],
 	pointersX = [],
 	pointersY = [],
@@ -52,7 +52,8 @@ let gl,
 	cross,
 	marker,
 	selected,
-	gameOver
+	gameOver,
+	now
 
 M.PI2 = M.PI2 || M.PI / 2
 M.TAU = M.TAU || M.PI * 2
@@ -433,6 +434,7 @@ function drawShadowMap() {
 }
 
 function update() {
+	now = Date.now()
 	for (let i = entitiesLength; i--;) {
 		entities[i].update()
 	}
@@ -607,6 +609,7 @@ function calculateEnemyTurn() {
 function endTurn(e) {
 	if (e.update != nop) {
 		e.update = nop
+		e.idle()
 		if (moveMade) {
 			moveMade = false
 			enemyTurn = e.selectable
@@ -626,7 +629,15 @@ function getNextAliveUnit(from, to) {
 	}
 }
 
-function attack(attacker, victim) {
+function kill(unit) {
+	unit.selectable = false
+	unit.life = 0
+	unit.timeOfDeath = now
+	translate(unit.deathMat, unit.mat, 0, .2, 0)
+	unit.update = unit.die
+}
+
+function hit(attacker, victim) {
 	if (--victim.life < 1) {
 		let from, to
 		if (victim.selectable) {
@@ -636,7 +647,7 @@ function attack(attacker, victim) {
 			from = playerUnits
 			to = from + enemyUnits
 		}
-		victim.die()
+		kill(victim)
 		const next = getNextAliveUnit(from, to)
 		if (victim == selected) {
 			if (next) {
@@ -653,6 +664,12 @@ function attack(attacker, victim) {
 		}
 	}
 	endTurn(attacker)
+}
+
+function attack(attacker, victim) {
+	attacker.timeOfAttack = now
+	attacker.victim = victim
+	attacker.update = attacker.attack
 }
 
 function substractAngles(a, b) {
@@ -678,7 +695,7 @@ function moveTo(e, x, z) {
 		} else {
 			cacheMat.set(mat)
 		}
-		translate(cacheMat, cacheMat, 0, 0, .2)
+		translate(cacheMat, cacheMat, 0, 0, .1)
 		const nx = cacheMat[12],
 			nz = cacheMat[14]
 		let blockable, attackable
@@ -704,7 +721,6 @@ function moveTo(e, x, z) {
 		if (attackable) {
 			moveMade = true
 			mat.set(cacheMat)
-			e.setup()
 			attack(e, attackable)
 			return
 		}
@@ -718,7 +734,7 @@ function moveTo(e, x, z) {
 		}
 		moveMade = true
 		mat.set(cacheMat)
-		e.setup()
+		e.walk()
 	} else {
 		endTurn(e)
 	}
@@ -798,7 +814,7 @@ function pointerUp(event) {
 				z = pointerSpot[2],
 				e = getSelectableNear(x, z)
 			if (e) {
-				selected = e;
+				selected = e
 				setMarker(e.mat)
 			} else if (selected) {
 				translate(cross.mat, idMat, x, .1, z)
@@ -1029,40 +1045,300 @@ function createBevelledCube() {
 	])
 }
 
+function createRock() {
+	return createModel([
+		0,-.51,.02,
+		.38,-.13,.31,
+		-.18,-.28,.52,
+		-.58,-.29,0,
+		-.21,-.13,-.57,
+		.48,-.14,-.34,
+		.07,.32,.39,
+		-.46,.29,.30,
+		-.39,.29,-.12,
+		.08,.26,-.31,
+		.33,.37,.04,
+		-.18,.54,-.08
+	],[
+		0,1,2,
+		1,0,5,
+		0,2,3,
+		0,3,4,
+		0,4,5,
+		1,5,10,
+		2,1,6,
+		3,2,7,
+		4,3,8,
+		5,4,9,
+		1,10,6,
+		2,6,7,
+		3,7,8,
+		4,8,9,
+		5,9,10,
+		6,10,11,
+		7,6,11,
+		8,7,11,
+		9,8,11,
+		10,9,11
+	])
+}
+
+function createDress() {
+	return createModel([
+		-.40,.59,.20,
+		-.32,1.48,.14,
+		-.40,.57,-.18,
+		-.32,1.46,-.15,
+		.41,.59,.17,
+		.37,1.00,.15,
+		.38,.61,-.16,
+		.34,1.02,-.15,
+		-.02,.50,-.22,
+		-.20,1.52,-.18,
+		-.01,.51,.24,
+		-.18,1.52,.17
+	],[
+		0,3,2,
+		8,7,6,
+		6,5,4,
+		11,0,10,
+		6,10,8,
+		9,1,11,
+		7,11,5,
+		8,0,2,
+		5,10,4,
+		3,8,2,
+		0,1,3,
+		8,9,7,
+		6,7,5,
+		11,1,0,
+		6,4,10,
+		9,3,1,
+		7,9,11,
+		8,10,0,
+		5,11,10,
+		3,9,8
+	])
+}
+
+function createHead() {
+	return createModel([
+		.18,1.57,.24,
+		.21,2.03,-.22,
+		.15,2.13,.04,
+		-.19,1.57,.24,
+		-.19,2.03,-.22,
+		-.15,2.13,.04,
+		-.11,1.61,-.16,
+		.11,1.61,-.16,
+		.11,1.50,.06,
+		-.11,1.50,.06,
+		-.04,1.50,-.02,
+		.04,1.50,-.02,
+		.38,1.42,.13,
+		-.38,1.42,.13,
+		-.42,1.42,-.12,
+		.42,1.42,-.12,
+		.28,.82,.00,
+		-.28,.82,.00,
+		-.00,1.76,.34,
+		0,2.17,.04,
+		-.00,1.57,.28,
+		.00,2.08,-.25,
+		0,1.61,-.16,
+		0,1.50,.06,
+		0,1.50,-.02,
+		0,1.42,.13,
+		0,1.42,-.12,
+		0,.82,0
+	],[
+		18,5,3,
+		3,20,18,
+		1,2,0,
+		0,7,1,
+		18,20,0,
+		2,21,19,
+		1,22,21,
+		22,11,24,
+		3,4,6,
+		11,26,24,
+		6,9,3,
+		7,8,11,
+		3,23,20,
+		26,16,27,
+		9,25,23,
+		9,14,13,
+		8,15,11,
+		25,17,27,
+		14,17,13,
+		12,16,15,
+		25,16,12,
+		8,25,12,
+		26,17,14,
+		0,23,8,
+		10,26,14,
+		22,10,6,
+		4,22,6,
+		5,21,4,
+		2,18,0,
+		3,5,4,
+		18,19,5,
+		2,1,21,
+		1,7,22,
+		22,7,11,
+		11,15,26,
+		6,10,9,
+		7,0,8,
+		3,9,23,
+		26,15,16,
+		9,13,25,
+		9,10,14,
+		8,12,15,
+		25,13,17,
+		25,27,16,
+		8,23,25,
+		26,27,17,
+		0,20,23,
+		10,24,26,
+		22,24,10,
+		4,21,22,
+		5,19,21,
+		2,19,18
+	])
+}
+
+function createLeg() {
+	return createModel([
+		.10,.12,-.11,
+		.14,.68,-.14,
+		.10,.12,.05,
+		.14,.68,.08,
+		-.10,.12,-.11,
+		-.14,.68,-.14,
+		-.10,.12,.05,
+		-.14,.68,.08,
+		.11,-.00,-.11,
+		.11,-.00,.05,
+		-.11,-.00,-.11,
+		-.11,-.00,.05,
+		.11,-.00,.18,
+		-.11,-.00,.18,
+	],[
+		1,2,0,
+		2,7,6,
+		7,4,6,
+		5,0,4,
+		2,11,9,
+		3,5,7,
+		11,8,9,
+		2,8,0,
+		6,10,11,
+		0,10,4,
+		12,11,9,
+		9,2,12,
+		11,13,6,
+		12,6,13,
+		1,3,2,
+		2,3,7,
+		7,5,4,
+		5,1,0,
+		2,6,11,
+		3,1,5,
+		11,10,8,
+		2,9,8,
+		6,4,10,
+		0,8,10,
+		12,13,11,
+		12,2,6
+	])
+}
+
+function createArm() {
+	return createModel([
+		.06,.53,-.06,
+		.09,1.38,-.09,
+		.06,.53,.06,
+		.09,1.38,.09,
+		-.06,.53,-.06,
+		-.09,1.38,-.09,
+		-.06,.53,.06,
+		-.09,1.38,.09
+	],[
+		1,2,0,
+		3,6,2,
+		7,4,6,
+		5,0,4,
+		6,0,2,
+		3,5,7,
+		1,3,2,
+		3,7,6,
+		7,5,4,
+		5,1,0,
+		6,4,0,
+		3,1,5
+	])
+}
+
+function createClub() {
+	return createModel([
+		.01,-.05,-.50,
+		.06,.01,-.51,
+		.03,-.13,.48,
+		.13,.03,.52,
+		-.06,-.01,-.51,
+		-.01,.05,-.52,
+		-.13,-.03,.50,
+		-.03,.13,.54
+	],[
+		0,3,2,
+		2,7,6,
+		7,4,6,
+		5,0,4,
+		2,4,0,
+		7,1,5,
+		0,1,3,
+		2,3,7,
+		7,5,4,
+		5,1,0,
+		2,6,4,
+		7,3,1
+	])
+}
+
 function createMarker() {
 	return createModel([
-		0,0,-2,
-		-1.41,0,-1.41,
-		-2,0,0,
-		-1.41,0,1.41,
-		0,0,2,
-		1.41,0,1.41,
-		2,0,0,
-		1.41,0,-1.41,
-		1.14,0,-1.14,
-		1.62,0,0,
-		1.14,0,1.14,
-		0,0,1.62,
-		-1.14,0,1.14,
-		-1.62,0,0,
-		-1.14,0,-1.14,
-		0,0,-1.62,
-		0,.21,-2,
-		-1.41,.21,-1.41,
-		-2,.21,0,
-		-1.41,.21,1.41,
-		0,.21,2,
-		1.41,.21,1.41,
-		2,.21,0,
-		1.41,.21,-1.41,
-		1.14,.21,-1.14,
-		1.62,.21,0,
-		1.14,.21,1.14,
-		0,.21,1.62,
-		-1.14,.21,1.14,
-		-1.62,.21,0,
-		-1.14,.21,-1.14,
-		0,.21,-1.62
+		0,0,-1,
+		-.70,0,-.70,
+		-1,0,0,
+		-.70,0,.70,
+		0,0,1,
+		.70,0,.70,
+		1,0,0,
+		.70,0,-.70,
+		.57,0,-.57,
+		.81,0,0,
+		.57,0,.57,
+		0,0,.81,
+		-.57,0,.57,
+		-.81,0,0,
+		-.57,0,-.57,
+		0,0,-.81,
+		0,.10,-1,
+		-.70,.10,-.70,
+		-1,.10,0,
+		-.70,.10,.70,
+		0,.10,1,
+		.70,.10,.70,
+		1,.10,0,
+		.70,.10,-.70,
+		.57,.10,-.57,
+		.81,.10,0,
+		.57,.10,.57,
+		0,.10,.81,
+		-.57,.10,.57,
+		-.81,.10,0,
+		-.57,.10,-.57,
+		0,.10,-.81,
 	],[
 		11,4,3,
 		10,5,4,
@@ -1127,7 +1403,7 @@ function createMarker() {
 		12,29,28,
 		7,16,23,
 		13,30,29,
-		0,17,16
+		0,17,16,
 	])
 }
 
@@ -1205,53 +1481,127 @@ function createCross() {
 	])
 }
 
-function addUnit(x, z, bevelledCubeModel, bodyColor, limbColor, selectable) {
-	const mat = new FA(idMat)
-	translate(mat, idMat, x, 0, z)
-	selectable && rotate(mat, mat, M.PI, 0, 1, 0)
-	scale(mat, mat, .4, .4, .4)
+function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
+	const feetDist = .23,
+		legOffset = .6,
+		armDist = .45,
+		armOffset = 1.35,
+		rotRange = M.PI * .8,
+		rotBase = rotRange * .5,
+		attackDuration = 200,
+		deathDuration = 200,
+		hm = new FA(idMat),
+		llm = new FA(idMat),
+		rlm = new FA(idMat),
+		lam = new FA(idMat),
+		ram = new FA(idMat),
+		cm = new FA(idMat),
+		bm = new FA(idMat)
+	translate(bm, idMat, x, 0, z)
+	selectable && rotate(bm, bm, M.PI, 0, 1, 0)
 	const head = {
-		mat: new FA(idMat),
-		model: bevelledCubeModel,
-		color: limbColor
-	}, leftEye = {
-		mat: new FA(idMat),
-		model: bevelledCubeModel,
-		color: limbColor
-	}, rightEye = {
-		mat: new FA(idMat),
-		model: bevelledCubeModel,
-		color: limbColor
+		mat: hm,
+		model: models.head,
+		color: skinColor
+	}, leftLeg = {
+		mat: llm,
+		model: models.leg,
+		color: skinColor
+	}, rightLeg = {
+		mat: rlm,
+		model: models.leg,
+		color: skinColor
+	}, leftArm = {
+		mat: lam,
+		model: models.arm,
+		color: skinColor
+	}, rightArm = {
+		mat: ram,
+		model: models.arm,
+		color: skinColor
+	}, club = {
+		mat: cm,
+		model: models.club,
+		color: clubColor
 	}, body = {
-		mat: new FA(mat),
-		model: bevelledCubeModel,
-		color: bodyColor,
+		mat: bm,
+		model: models.dress,
+		color: dressColor,
 		selectable: selectable,
 		life: 1,
+		deathMat: new FA(idMat),
 		die: function() {
-			body.color = head.color = leftEye.color = rightEye.color =
-				[.8, .2, 0, 1]
-			this.selectable = false
-			this.life = 0
+			let t = now - this.timeOfDeath
+			if (t > deathDuration) {
+				rotate(bm, this.deathMat, -M.PI2, 1, 0, 0)
+				this.update = nop
+				return
+			}
+			t /= deathDuration
+			rotate(bm, this.deathMat, -M.PI2 * t, 1, 0, 0)
+			hm.set(bm)
+			translate(llm, bm, feetDist, 0, 0)
+			translate(rlm, bm, -feetDist, 0, 0)
+			translate(lam, bm, armDist, 0, 0)
+			translate(ram, bm, -armDist, 0, 0)
+			// drop the club
+			translate(cm, cm, 0, -.05, 0)
 		},
-		setup: function() {
-			const m = body.mat,
-				hm = head.mat,
-				le = leftEye.mat,
-				re = rightEye.mat
-			translate(hm, m, 0, 0, 1.1)
-			scale(hm, hm, .3, .3, .3)
-			translate(le, m, -.5, .7, .7)
-			scale(le, le, .2, .2, .2)
-			translate(re, m, .5, .7, .7)
-			scale(re, re, .2, .2, .2)
+		walk: function() {
+			const t = 1 - M.abs((now * .003) % 2 - 1),
+				angle = -rotBase + rotRange * t
+			hm.set(bm)
+			// move legs to pivot
+			translate(cacheMat, bm, 0, legOffset, 0)
+			// legs
+			rotate(llm, cacheMat, angle, 1, 0, 0)
+			translate(llm, llm, feetDist, -legOffset, 0)
+			rotate(rlm, cacheMat, -angle, 1, 0, 0)
+			translate(rlm, rlm, -feetDist, -legOffset, 0)
+			// move arms to pivot
+			translate(cacheMat, bm, 0, armOffset, 0)
+			// arms
+			rotate(lam, cacheMat, -angle, 1, 0, 0)
+			translate(lam, lam, armDist, -armOffset, 0)
+			rotate(ram, cacheMat, angle, 1, 0, 0)
+			translate(ram, ram, -armDist, -armOffset, 0)
+			this.finish()
+		},
+		attack: function() {
+			const t = now - this.timeOfAttack
+			if (t > attackDuration) {
+				hit(this, this.victim)
+				this.update = nop
+				return
+			}
+			hm.set(bm)
+			translate(llm, bm, feetDist, 0, 0)
+			translate(rlm, bm, -feetDist, 0, 0)
+			translate(lam, bm, armDist, 0, 0)
+			// move arms to pivot
+			translate(cacheMat, bm, 0, armOffset, 0)
+			const angle = -M.PI + M.PI * (t / attackDuration)
+			rotate(ram, cacheMat, angle, 1, 0, 0)
+			translate(ram, ram, -armDist, -armOffset, 0)
+			this.finish()
+		},
+		idle: function() {
+			hm.set(bm)
+			translate(llm, bm, feetDist, 0, 0)
+			translate(rlm, bm, -feetDist, 0, 0)
+			translate(lam, bm, armDist, 0, 0)
+			translate(ram, bm, -armDist, 0, 0)
+			this.finish()
+		},
+		finish: function() {
+			translate(cm, ram, 0, .7, .5)
 			if (selected === this) {
-				setMarker(m)
+				setMarker(bm)
 			}
 		}
 	}
-	body.setup()
-	entities.push(head, leftEye, rightEye, body)
+	body.idle()
+	entities.push(head, leftLeg, rightLeg, leftArm, rightArm, club, body)
 	return body
 }
 
@@ -1262,8 +1612,7 @@ function createEntities() {
 	playerUnits = 5
 	enemyUnits = 6
 
-	const bevelledCubeModel = createBevelledCube(),
-		mat = new FA(idMat)
+	const mat = new FA(idMat)
 
 	scale(mat, mat, 30, 1, 30)
 	entities.push({
@@ -1273,15 +1622,16 @@ function createEntities() {
 	})
 
 	// some floor decoration that should better be in a shader
-	const patchColor = [.79, .67, .42, 1]
+	const patchColor = [.79, .67, .42, 1],
+		bevelledCube = createBevelledCube()
 	for (let i = 64; i--;) {
 		translate(mat, idMat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
 		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
-		const s = .2 + M.random() * 1.8
+		const s = .5 + M.random() * 2
 		scale(mat, mat, s, .01, s)
 		entities.push({
 			mat: new FA(mat),
-			model: bevelledCubeModel,
+			model: bevelledCube,
 			color: patchColor
 		})
 	}
@@ -1312,29 +1662,38 @@ function createEntities() {
 		}
 	})
 
-	const black = [.1, .1, .1, 1],
-		white = [1, 1, 1, 1]
-	
+	const models = {
+			dress: createDress(),
+			head: createHead(),
+			leg: createLeg(),
+			arm: createArm(),
+			club: createClub()
+		},
+		skinColor = [.49, .37, .12, 1],
+		clubColor = [.29, .17, 0, 1],
+		playerColor = [1, 1, 1, 1],
+		enemyColor = [.1, .1, .1, 1]
+
 	for (let o = playerUnits >> 1, x = -o, z = 4, i = 0;
 			i < playerUnits && x <= o; ++x, ++i) {
 		blockables.push(addUnit(x * 2, z + (x & 1 ? 2 : 0),
-			bevelledCubeModel, white, black, true))
+			models, skinColor, playerColor, clubColor, true))
 	}
 
-	selected = blockables[blockables.length - 1]
+	selected = blockables[blockables.length >> 1]
 	setMarker(selected.mat)
 
 	for (let o = enemyUnits >> 1, x = -o, z = -4, i = 0;
 			i < enemyUnits && x <= o; ++x, ++i) {
 		blockables.push(addUnit(x * 2, z + (x & 1 ? -2 : 0),
-			bevelledCubeModel, black, white, false))
+			models, skinColor, enemyColor, clubColor, false))
 	}
 
 	// add some obstacles
-	const cubeModel = createCube(),
-		rockColor = [.59, .47, .22, 1]
+	const rockModel = createRock(),
+		rockColor = [.53, .47, .32, 1]
 	for (let i = 16; i--;) {
-		blockablesLength = blockables.length 
+		blockablesLength = blockables.length
 		let x, z
 		do {
 			x = M.random() * 30 - 15
@@ -1342,17 +1701,16 @@ function createEntities() {
 		} while (getBlockableNear(x, z, 4))
 		translate(mat, idMat, x, 0, z)
 		rotate(mat, mat, M.random() * M.TAU, 1, 1, 1)
-		scale(mat, mat, .5, .5, .5)
 		const blockable = {
 			mat: new FA(mat),
-			model: cubeModel,
+			model: rockModel,
 			color: rockColor
 		}
 		entities.push(blockable)
 		blockables.push(blockable)
 	}
 
-	blockablesLength = blockables.length 
+	blockablesLength = blockables.length
 	entitiesLength = entities.length
 
 	for (let i = entitiesLength; i--;) {
