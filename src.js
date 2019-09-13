@@ -435,6 +435,9 @@ function drawShadowMap() {
 
 function update() {
 	now = Date.now()
+	if (gameOver && now - gameOver > 10000) {
+		createEntities()
+	}
 	for (let i = entitiesLength; i--;) {
 		entities[i].update()
 	}
@@ -629,12 +632,24 @@ function getNextAliveUnit(from, to) {
 	}
 }
 
+function cheerWinners(from, to) {
+	for (let i = from; i < to; ++i) {
+		const b = blockables[i]
+		if (b.life > 0) {
+			b.lockMat.set(b.mat)
+			b.update = b.cheer
+		}
+	}
+}
+
 function kill(unit) {
 	unit.selectable = false
 	unit.life = 0
 	unit.timeOfDeath = now
-	translate(unit.deathMat, unit.mat, 0, .2, 0)
+	translate(unit.lockMat, unit.mat, 0, .2, 0)
 	unit.update = unit.die
+	blockables.push(unit.head)
+	++blockablesLength
 }
 
 function hit(attacker, victim) {
@@ -659,7 +674,15 @@ function hit(attacker, victim) {
 			}
 		}
 		if (!next) {
-			gameOver = true
+			gameOver = now
+			if (attacker.selectable) {
+				from = 0
+				to = playerUnits
+			} else {
+				from = playerUnits
+				to = from + enemyUnits
+			}
+			cheerWinners(from, to)
 			return
 		}
 	}
@@ -942,32 +965,6 @@ function createPlane() {
 	],[
 		0,1,3,
 		0,3,2
-	])
-}
-
-function createCube() {
-	return createModel([
-		-1,-1,1,
-		-1,1,1,
-		-1,-1,-1,
-		-1,1,-1,
-		1,-1,1,
-		1,1,1,
-		1,-1,-1,
-		1,1,-1
-	],[
-		1,2,0,
-		3,6,2,
-		7,4,6,
-		5,0,4,
-		6,0,2,
-		3,5,7,
-		1,3,2,
-		3,7,6,
-		7,5,4,
-		5,1,0,
-		6,4,0,
-		3,1,5
 	])
 }
 
@@ -1527,18 +1524,19 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		mat: bm,
 		model: models.dress,
 		color: dressColor,
+		head: head,
 		selectable: selectable,
 		life: 1,
-		deathMat: new FA(idMat),
+		lockMat: new FA(idMat),
 		die: function() {
 			let t = now - this.timeOfDeath
 			if (t > deathDuration) {
-				rotate(bm, this.deathMat, -M.PI2, 1, 0, 0)
+				rotate(bm, this.lockMat, -M.PI2, 1, 0, 0)
 				this.update = nop
 				return
 			}
 			t /= deathDuration
-			rotate(bm, this.deathMat, -M.PI2 * t, 1, 0, 0)
+			rotate(bm, this.lockMat, -M.PI2 * t, 1, 0, 0)
 			hm.set(bm)
 			translate(llm, bm, feetDist, 0, 0)
 			translate(rlm, bm, -feetDist, 0, 0)
@@ -1571,7 +1569,6 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 			const t = now - this.timeOfAttack
 			if (t > attackDuration) {
 				hit(this, this.victim)
-				this.update = nop
 				return
 			}
 			hm.set(bm)
@@ -1591,6 +1588,21 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 			translate(rlm, bm, -feetDist, 0, 0)
 			translate(lam, bm, armDist, 0, 0)
 			translate(ram, bm, -armDist, 0, 0)
+			this.finish()
+		},
+		cheer: function() {
+			const t = 1 - M.abs((now * .004) % 2 - 1),
+				angle = -M.PI + t
+			translate(bm, this.lockMat, 0, t * .1, 0)
+			hm.set(bm)
+			translate(llm, bm, feetDist, 0, 0)
+			translate(rlm, bm, -feetDist, 0, 0)
+			// move arms to pivot
+			translate(cacheMat, bm, 0, armOffset, 0)
+			rotate(lam, cacheMat, angle, 1, 0, 0)
+			translate(lam, lam, armDist, -armOffset, 0)
+			rotate(ram, cacheMat, angle, 1, 0, 0)
+			translate(ram, ram, -armDist, -armOffset, 0)
 			this.finish()
 		},
 		finish: function() {
@@ -1688,6 +1700,8 @@ function createEntities() {
 		blockables.push(addUnit(x * 2, z + (x & 1 ? -2 : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
+
+	lookAt(0, 3)
 
 	// add some obstacles
 	const rockModel = createRock(),
@@ -1978,7 +1992,6 @@ function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
-	lookAt(0, 3)
 
 	createShadowBuffer()
 	createOffscreenBuffer()
