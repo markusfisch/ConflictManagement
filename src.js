@@ -600,7 +600,7 @@ function calculateEnemyTurn() {
 				tz = az + M.random() * 10 - 5
 			} while (tries++ < 10 &&
 				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
-					getBlockableNear(tx, tz, 1, agent)))
+					getBlockableNear(tx, tz, 4, agent)))
 			agent.targetX = tx
 			agent.targetZ = tz
 		}
