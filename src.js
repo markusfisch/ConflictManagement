@@ -20,7 +20,7 @@ const M = Math,
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
 	skyColor = [.06, .06, .06, 1],
-	camPos = [0, 10, 8],
+	camPos = [0, 13, 11],
 	pointerSpot = [0, 0, 0],
 	pointersX = [],
 	pointersY = [],
@@ -1620,6 +1620,7 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 function createEntities() {
 	entities = []
 	blockables = []
+	drag.dragging = false
 	gameOver = moveMade = enemyTurn = false
 	playerUnits = 5
 	enemyUnits = 6
@@ -1701,7 +1702,7 @@ function createEntities() {
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
-	lookAt(0, 3)
+	lookAt(0, 0)
 
 	// add some obstacles
 	const rockModel = createRock(),
@@ -1991,7 +1992,7 @@ function lookAt(x, z) {
 function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
-	setOrthogonal(lightProjMat, -15, 15, -15, 15, -35, 35)
+	setOrthogonal(lightProjMat, -20, 20, -20, 20, -35, 35)
 
 	createShadowBuffer()
 	createOffscreenBuffer()
