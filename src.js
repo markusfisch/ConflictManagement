@@ -648,8 +648,6 @@ function kill(unit) {
 	unit.timeOfDeath = now
 	translate(unit.lockMat, unit.mat, 0, .2, 0)
 	unit.update = unit.die
-	blockables.push(unit.head)
-	++blockablesLength
 }
 
 function hit(attacker, victim) {
@@ -1524,7 +1522,6 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		mat: bm,
 		model: models.dress,
 		color: dressColor,
-		head: head,
 		selectable: selectable,
 		life: 1,
 		lockMat: new FA(idMat),
