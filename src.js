@@ -852,7 +852,9 @@ function pointerUp(event) {
 
 function pointerMove(event) {
 	setPointer(event, pointersLength)
-	dragCamera()
+	if (pointersLength > 0) {
+		dragCamera()
+	}
 }
 
 function pointerDown(event) {
