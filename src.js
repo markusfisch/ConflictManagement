@@ -590,6 +590,8 @@ function calculateEnemyTurn() {
 		}
 	}
 	if (alive > 0) {
+		// no target in sight, so pick some random enemy and make him
+		// do something (silly)
 		if (!agent && (agent = getRandomEnemy())) {
 			const am = agent.mat,
 				ax = am[12],
