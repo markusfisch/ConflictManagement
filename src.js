@@ -721,16 +721,16 @@ function moveTo(e, x, z) {
 			nz = cacheMat[14]
 		let blockable, attackable
 		for (let i = blockablesLength; i-- && !blockable && !attackable;) {
-			const b = blockables[i],
-				bm = b.mat,
+			const b = blockables[i]
+			if (b == e) {
+				continue
+			}
+			const bm = b.mat,
 				bx = bm[12],
 				bz = bm[14],
 				bdx = nx - bx,
 				bdz = nz - bz,
 				bd = bdx*bdx + bdz*bdz
-			if (b == e) {
-				continue
-			}
 			if (!blockable && bd < .5) {
 				blockable = b
 			}
