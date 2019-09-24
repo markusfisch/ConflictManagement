@@ -345,8 +345,9 @@ function drawEntity(drawModel, attribs, uniforms, matsLoc) {
 
 	// attribs & buffers
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
+	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 	// uniforms
@@ -366,11 +367,13 @@ function drawEntities(drawModel, attribs, uniforms) {
 	const matsLoc = uniforms['mats[0]']
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.uv)
 	for (let i = entitiesLength; i--;) {
 		entities[i].draw(drawModel, attribs, uniforms, matsLoc)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.uv)
 }
 
 function initView(buffer, w, h) {
@@ -912,38 +915,47 @@ function calculateNormals(vertices, indicies) {
 	return normals
 }
 
-function makeVerticesUnique(vertices, indicies) {
+function makeVerticesUnique(vertices, indicies, uvs) {
 	const used = []
 	for (let i = 0, l = indicies.length; i < l; ++i) {
 		const idx = indicies[i]
 		if (used.includes(idx)) {
-			let offset = idx * 3
+			let vo = idx * 3
 			indicies[i] = vertices.length / 3
-			vertices.push(vertices[offset++])
-			vertices.push(vertices[offset++])
-			vertices.push(vertices[offset])
+			vertices.push(vertices[vo++])
+			vertices.push(vertices[vo++])
+			vertices.push(vertices[vo])
+			if (uvs) {
+				let o = idx << 1
+				uvs.push(uvs[o++])
+				uvs.push(uvs[o])
+			}
 		} else {
 			used.push(idx)
 		}
 	}
 }
 
-function createModel(vertices, indicies) {
-	makeVerticesUnique(vertices, indicies)
+function createModel(vertices, indicies, uvs) {
+	makeVerticesUnique(vertices, indicies, uvs)
 
 	const ncoordinates = vertices.length,
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
 
+	uvs = uvs || new FA(vec2elements)
+
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
-	for (let v = 0, n = 0, i = 0, w = 0, p = 0; v < ncoordinates;) {
+	for (let v = 0, n = 0, p = 0; v < ncoordinates;) {
 		buffer.push(vertices[v++])
 		buffer.push(vertices[v++])
 		buffer.push(vertices[v++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
+		buffer.push(uvs[p++])
+		buffer.push(uvs[p++])
 	}
 
 	model.buffer = gl.createBuffer()
@@ -967,6 +979,11 @@ function createPlane() {
 	],[
 		0,1,3,
 		0,3,2
+	],[
+		0,1,
+		1,1,
+		0,0,
+		1,0
 	])
 }
 
@@ -1806,19 +1823,23 @@ precision mediump float;
 #endif`, lightVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
+attribute vec2 uv;
 
 uniform mat4 mats[5];
 uniform vec3 lightDirection;
 
 varying float bias;
+varying vec2 textureUV;
 
 void main() {
 	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
 	bias = .001 * (1. - intensity);
 	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
+	textureUV = uv;
 }`, lightFragmentShader = `${precision}
 varying float bias;
+varying vec2 textureUV;
 
 void main() {
 	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
@@ -1829,6 +1850,7 @@ void main() {
 }`, offscreenVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
+attribute vec2 uv;
 
 uniform mat4 mats[5];
 uniform vec3 lightDirection;
@@ -1836,6 +1858,7 @@ uniform vec3 lightDirection;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
+varying vec2 textureUV;
 
 const mat4 texUnitConverter = mat4(
 	.5, .0, .0, .0,
@@ -1851,6 +1874,7 @@ void main() {
 	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
 	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
+	textureUV = uv;
 }`, offscreenFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
@@ -1860,6 +1884,7 @@ uniform sampler2D shadowTexture;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
+varying vec2 textureUV;
 
 const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
 float decodeFloat(vec4 c) {
@@ -1867,9 +1892,14 @@ float decodeFloat(vec4 c) {
 }
 
 void main() {
+	float grid = 1. / 20.;
+	float thrsh = grid * .5;
+	float ym = step(mod(textureUV.y, grid), thrsh) * thrsh;
+	grid = step(mod(textureUV.x + ym, grid), thrsh);
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
 	float res = step(.5, intensity);
 	float light = res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
+	light *= max(1. - grid, .95);
 	float fog = z / far;
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
@@ -1894,13 +1924,13 @@ void main() {
 
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
-		['vertex', 'normal'],
+		['vertex', 'normal', 'uv'],
 		['mats[0]'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
 	cacheLocations(offscreenProgram,
-		['vertex', 'normal'],
+		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
