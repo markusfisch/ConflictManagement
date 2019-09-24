@@ -987,80 +987,6 @@ function createPlane() {
 	])
 }
 
-function createBevelledCube() {
-	return createModel([
-		-.55,-1,.55,
-		-.55,-.55,1,
-		-1,-.55,.55,
-		-.55,.55,1,
-		-.55,1,.55,
-		-1,.55,.55,
-		-.55,-1,-.55,
-		-1,-.55,-.55,
-		-.55,-.55,-1,
-		-.55,1,-.55,
-		-.55,.55,-1,
-		-1,.55,-.55,
-		.55,-1,.55,
-		1,-.55,.55,
-		.55,-.55,1,
-		.55,1,.55,
-		.55,.55,1,
-		1,.55,.55,
-		.55,-1,-.55,
-		.55,-.55,-1,
-		1,-.55,-.55,
-		.55,1,-.55,
-		1,.55,-.55,
-		.55,.55,-1
-	],[
-		16,1,14,
-		22,13,20,
-		9,15,21,
-		5,7,2,
-		10,19,8,
-		0,1,2,
-		3,4,5,
-		6,7,8,
-		9,10,11,
-		12,13,14,
-		15,16,17,
-		18,19,20,
-		21,22,23,
-		0,7,6,
-		3,2,1,
-		9,5,4,
-		8,11,10,
-		6,19,18,
-		21,10,9,
-		20,23,22,
-		18,13,12,
-		15,22,21,
-		14,17,16,
-		12,1,0,
-		4,16,15,
-		18,0,6,
-		16,3,1,
-		22,17,13,
-		9,4,15,
-		5,11,7,
-		10,23,19,
-		0,2,7,
-		3,5,2,
-		9,11,5,
-		8,7,11,
-		6,8,19,
-		21,23,10,
-		20,19,23,
-		18,20,13,
-		15,17,22,
-		14,13,17,
-		12,14,1,
-		4,3,16,
-		18,12,0
-	])
-}
-
 function createRock() {
 	return createModel([
 		0,-.51,.02,
@@ -1651,21 +1577,6 @@ function createEntities() {
 		model: createPlane(),
 		color: [.89, .77, .52, 1]
 	})
-
-	// some floor decoration that should better be in a shader
-	const patchColor = [.79, .67, .42, 1],
-		bevelledCube = createBevelledCube()
-	for (let i = 64; i--;) {
-		translate(mat, idMat, M.random() * 40 - 20, 0, M.random() * 30 - 15)
-		rotate(mat, mat, M.random() * M.TAU, 0, 1, 0)
-		const s = .5 + M.random() * 2
-		scale(mat, mat, s, .01, s)
-		entities.push({
-			mat: new FA(mat),
-			model: bevelledCube,
-			color: patchColor
-		})
-	}
 
 	translate(mat, idMat, 0, -1, 0)
 	entities.push(cross = {
