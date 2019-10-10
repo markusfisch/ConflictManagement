@@ -1745,7 +1745,7 @@ varying vec2 textureUV;
 void main() {
 	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
-	bias = .001 * (1. - intensity);
+	bias = .001 * intensity;
 	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
 	textureUV = uv;
 }`, lightFragmentShader = `${precision}
@@ -1836,7 +1836,7 @@ void main() {
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
 		['vertex', 'normal', 'uv'],
-		['mats[0]'])
+		['mats[0]', 'lightDirection'])
 
 	offscreenProgram = buildProgram(offscreenVertexShader,
 		offscreenFragmentShader)
