@@ -1879,7 +1879,7 @@ void main() {
 	float light = light();
 	float fog = z / far;
 #ifdef GROUND
-	light *= max(.92, step(distance(player, st), range));
+	light *= max(.92, step(range, distance(player, st)));
 #endif
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
