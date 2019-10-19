@@ -382,8 +382,8 @@ function drawEntity(setColor, attribs, uniforms, matsLoc) {
 	const model = this.model
 
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
 	setMats(matsLoc, this.mat)
@@ -1003,6 +1003,8 @@ function createModel(vertices, indicies, uvs) {
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
 
+	uvs = uvs || new FA(vec2elements)
+
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
 	for (let v = 0, n = 0, p = 0; v < ncoordinates;) {
@@ -1012,10 +1014,8 @@ function createModel(vertices, indicies, uvs) {
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
-		if (uvs) {
-			buffer.push(uvs[p++])
-			buffer.push(uvs[p++])
-		}
+		buffer.push(uvs[p++])
+		buffer.push(uvs[p++])
 	}
 
 	model.buffer = gl.createBuffer()
