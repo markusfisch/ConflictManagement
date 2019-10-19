@@ -19,6 +19,7 @@ const M = Math,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
+	playerPos = [-1, -1],
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 13, 11],
 	pointerSpot = [0, 0, 0],
@@ -26,6 +27,8 @@ const M = Math,
 	pointersY = [],
 	drag = {},
 	horizon = 50,
+	groundSize = 30,
+	groundFactor = .5 / 30,
 	offscreenSize = 256,
 	shadowTextureSize = 1024
 
@@ -35,7 +38,8 @@ let gl,
 	shadowProgram,
 	offscreenBuffer,
 	offscreenTexture,
-	offscreenProgram,
+	groundProgram,
+	entityProgram,
 	screenBuffer,
 	screenProgram,
 	screenWidth,
@@ -330,60 +334,14 @@ function setPerspective(out, fov, aspect, near, far) {
 	out[15] = 0
 }
 
-function drawShadowModel(count) {
-	gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0)
-}
-
-function drawCameraModel(count, uniforms, color) {
-	gl.uniform4fv(uniforms.color, color)
-	drawShadowModel(count)
-}
-
-function drawEntity(drawModel, attribs, uniforms, matsLoc) {
-	const model = this.model,
-		mat = this.mat
-
-	// attribs & buffers
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
-	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
-	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
-
-	// uniforms
-	multiply(modelViewMat, viewMat, mat)
-	multiply(lightModelViewMat, lightViewMat, mat)
-
-	// the model matrix needs to be inverted and transposed to
-	// scale the normals correctly
-	invert(normalMat, mat)
-	transpose(normalMat, normalMat)
-
-	gl.uniformMatrix4fv(matsLoc, false, mats)
-	drawModel(model.count, uniforms, this.color)
-}
-
-function drawEntities(drawModel, attribs, uniforms) {
-	const matsLoc = uniforms['mats[0]']
-	gl.enableVertexAttribArray(attribs.vertex)
-	gl.enableVertexAttribArray(attribs.normal)
-	gl.enableVertexAttribArray(attribs.uv)
-	for (let i = entitiesLength; i--;) {
-		entities[i].draw(drawModel, attribs, uniforms, matsLoc)
-	}
-	gl.disableVertexAttribArray(attribs.vertex)
-	gl.disableVertexAttribArray(attribs.normal)
-	gl.disableVertexAttribArray(attribs.uv)
-}
-
-function initView(buffer, w, h) {
+function initFrame(w, h, buffer) {
 	gl.bindFramebuffer(gl.FRAMEBUFFER, buffer)
 	gl.viewport(0, 0, w, h)
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 }
 
 function drawScreen() {
-	initView(null, screenWidth, screenHeight)
+	initFrame(screenWidth, screenHeight)
 
 	gl.useProgram(screenProgram)
 	const attribs = screenProgram.attribs,
@@ -404,14 +362,48 @@ function drawScreen() {
 	gl.disableVertexAttribArray(attribs.uv)
 }
 
-function drawCameraView() {
-	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
-	initView(offscreenBuffer, offscreenSize, offscreenSize)
+function setMats(matsLoc, mat) {
+	multiply(modelViewMat, viewMat, mat)
+	multiply(lightModelViewMat, lightViewMat, mat)
 
-	gl.useProgram(offscreenProgram)
-	const attribs = offscreenProgram.attribs,
-		uniforms = offscreenProgram.uniforms
+	// the model matrix needs to be inverted and transposed to
+	// scale the normals correctly
+	invert(normalMat, mat)
+	transpose(normalMat, normalMat)
 
+	gl.uniformMatrix4fv(matsLoc, false, mats)
+}
+
+function setModelColor(uniforms, color) {
+	gl.uniform4fv(uniforms.color, color)
+}
+
+function drawEntity(setColor, attribs, uniforms, matsLoc) {
+	const model = this.model
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 24, 0)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 24, 12)
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+
+	setMats(matsLoc, this.mat)
+	setColor(uniforms, this.color)
+
+	gl.drawElements(gl.TRIANGLES, model.count, gl.UNSIGNED_SHORT, 0)
+}
+
+function drawEntities(setColor, attribs, uniforms, start) {
+	const matsLoc = uniforms['mats[0]']
+	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.normal)
+	for (let i = start; i < entitiesLength; ++i) {
+		entities[i].draw(setColor, attribs, uniforms, matsLoc)
+	}
+	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.normal)
+}
+
+function setEntityUniforms(uniforms) {
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
 	gl.uniform4fv(uniforms.sky, skyColor)
 	gl.uniform1f(uniforms.far, horizon)
@@ -419,21 +411,75 @@ function drawCameraView() {
 	gl.activeTexture(gl.TEXTURE0)
 	gl.bindTexture(gl.TEXTURE_2D, shadowTexture)
 	gl.uniform1i(uniforms.shadowTexture, 0)
+}
 
-	drawEntities(drawCameraModel, attribs, uniforms)
+function drawGround(setColor) {
+	gl.useProgram(groundProgram)
+
+	const attribs = groundProgram.attribs,
+		uniforms = groundProgram.uniforms,
+		matsLoc = uniforms['mats[0]'],
+		ground = entities[0],
+		model = ground.model
+
+	setEntityUniforms(uniforms)
+
+	let range
+	if (selected) {
+		// map world coordinates to UV coordinates
+		const m = selected.mat
+		playerPos[0] = (m[12] + groundSize) * groundFactor
+		playerPos[1] = (m[14] + groundSize) * groundFactor
+		range = .5 / groundSize * selected.range
+	} else {
+		playerPos[0] = playerPos[1] = -1
+		range = -1
+	}
+	gl.uniform2fv(uniforms.player, playerPos)
+	gl.uniform1f(uniforms.range, range)
+
+	gl.enableVertexAttribArray(attribs.vertex)
+	gl.enableVertexAttribArray(attribs.normal)
+	gl.enableVertexAttribArray(attribs.uv)
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.vertexAttribPointer(attribs.vertex, 3, gl.FLOAT, false, 32, 0)
+	gl.vertexAttribPointer(attribs.normal, 3, gl.FLOAT, false, 32, 12)
+	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+
+	setMats(matsLoc, ground.mat)
+	setColor(uniforms, ground.color)
+
+	gl.drawElements(gl.TRIANGLES, model.count, gl.UNSIGNED_SHORT, 0)
+
+	gl.disableVertexAttribArray(attribs.vertex)
+	gl.disableVertexAttribArray(attribs.normal)
+	gl.disableVertexAttribArray(attribs.uv)
+}
+
+function drawOffscreen() {
+	gl.clearColor(skyColor[0], skyColor[1], skyColor[2], skyColor[3])
+	initFrame(offscreenSize, offscreenSize, offscreenBuffer)
+
+	drawGround(setModelColor)
+
+	gl.useProgram(entityProgram)
+	const attribs = entityProgram.attribs,
+		uniforms = entityProgram.uniforms
+	setEntityUniforms(uniforms)
+	drawEntities(setModelColor, attribs, uniforms, 1)
 }
 
 function drawShadowMap() {
-	initView(shadowBuffer, shadowTextureSize, shadowTextureSize)
 	gl.clearColor(0, 0, 0, 1)
+	initFrame(shadowTextureSize, shadowTextureSize, shadowBuffer)
 
 	gl.useProgram(shadowProgram)
 	const attribs = shadowProgram.attribs,
 		uniforms = shadowProgram.uniforms
-
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
-
-	drawEntities(drawShadowModel, attribs, uniforms)
+	drawEntities(nop, attribs, uniforms, 0)
 }
 
 function update() {
@@ -450,7 +496,7 @@ function run() {
 	requestAnimationFrame(run)
 	update()
 	drawShadowMap()
-	drawCameraView()
+	drawOffscreen()
 	drawScreen()
 }
 
@@ -482,6 +528,24 @@ function getGroundSpot(out, nx, ny) {
 	y *= len
 	z *= len
 	return rayGround(out, -cacheMat[12], cacheMat[13], cacheMat[14], x, y, z)
+}
+
+function setTarget(e, x, z) {
+	const em = e.mat,
+		ex = em[12],
+		ez = em[14],
+		dx = x - ex,
+		dz = z - ez,
+		d = dx*dx + dz*dz,
+		r = e.range
+	if (d > r*r) {
+		const a = M.atan2(dz, dx)
+		x = ex + r * M.cos(a)
+		z = ez + r * M.sin(a)
+	}
+	e.targetX = x
+	e.targetZ = z
+	e.selectable && translate(cross.mat, idMat, x, .1, z)
 }
 
 function dist(m, x, z) {
@@ -585,9 +649,8 @@ function calculateEnemyTurn() {
 				d = dx*dx + dz*dz,
 				b = getFirstBlockableFrom(ex, ez, dx, dz, e)
 			if (d < minD && b == p) {
+				setTarget(e, px, pz)
 				agent = e
-				agent.targetX = px
-				agent.targetZ = pz
 				minD = d
 			}
 		}
@@ -606,8 +669,7 @@ function calculateEnemyTurn() {
 			} while (tries++ < 10 &&
 				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
 					getBlockableNear(tx, tz, 4, agent)))
-			agent.targetX = tx
-			agent.targetZ = tz
+			setTarget(agent, tx, tz)
 		}
 		agent.update = moveToTarget
 	}
@@ -843,9 +905,7 @@ function pointerUp(event) {
 				selected = e
 				setMarker(e.mat)
 			} else if (selected) {
-				translate(cross.mat, idMat, x, .1, z)
-				selected.targetX = x
-				selected.targetZ = z
+				setTarget(selected, x, z)
 				selected.update = moveToTarget
 			}
 		}
@@ -943,8 +1003,6 @@ function createModel(vertices, indicies, uvs) {
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
 
-	uvs = uvs || new FA(vec2elements)
-
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
 	for (let v = 0, n = 0, p = 0; v < ncoordinates;) {
@@ -954,8 +1012,10 @@ function createModel(vertices, indicies, uvs) {
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
 		buffer.push(normals[n++])
-		buffer.push(uvs[p++])
-		buffer.push(uvs[p++])
+		if (uvs) {
+			buffer.push(uvs[p++])
+			buffer.push(uvs[p++])
+		}
 	}
 
 	model.buffer = gl.createBuffer()
@@ -970,7 +1030,7 @@ function createModel(vertices, indicies, uvs) {
 	return model
 }
 
-function createPlane() {
+function createGround() {
 	return createModel([
 		-1,0,1,
 		1,0,1,
@@ -1423,7 +1483,7 @@ function createCross() {
 	])
 }
 
-function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
+function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
 	const feetDist = .23,
 		legOffset = .6,
 		armDist = .45,
@@ -1471,6 +1531,7 @@ function addUnit(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		color: dressColor,
 		selectable: selectable,
 		life: 1,
+		range: groundSize * .2,
 		lockMat: new FA(idMat),
 		die: function() {
 			let t = now - this.timeOfDeath
@@ -1571,10 +1632,10 @@ function createEntities() {
 
 	const mat = new FA(idMat)
 
-	scale(mat, mat, 30, 1, 30)
+	scale(mat, mat, groundSize, 1, groundSize)
 	entities.push({
 		mat: new FA(mat),
-		model: createPlane(),
+		model: createGround(),
 		color: [.89, .77, .52, 1]
 	})
 
@@ -1618,7 +1679,7 @@ function createEntities() {
 
 	for (let o = playerUnits >> 1, x = -o, z = 4, i = 0;
 			i < playerUnits && x <= o; ++x, ++i) {
-		blockables.push(addUnit(x * 2, z + (x & 1 ? 2 : 0),
+		blockables.push(addMan(x * 2, z + (x & 1 ? 2 : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
 
@@ -1627,7 +1688,7 @@ function createEntities() {
 
 	for (let o = enemyUnits >> 1, x = -o, z = -4, i = 0;
 			i < enemyUnits && x <= o; ++x, ++i) {
-		blockables.push(addUnit(x * 2, z + (x & 1 ? -2 : 0),
+		blockables.push(addMan(x * 2, z + (x & 1 ? -2 : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
@@ -1657,6 +1718,7 @@ function createEntities() {
 	blockablesLength = blockables.length
 	entitiesLength = entities.length
 
+	// complete properties
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
 		e.update = e.update || nop
@@ -1734,23 +1796,19 @@ precision mediump float;
 #endif`, lightVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
-attribute vec2 uv;
 
 uniform mat4 mats[5];
 uniform vec3 lightDirection;
 
 varying float bias;
-varying vec2 textureUV;
 
 void main() {
 	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
 	bias = .001 * intensity;
 	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
-	textureUV = uv;
 }`, lightFragmentShader = `${precision}
 varying float bias;
-varying vec2 textureUV;
 
 void main() {
 	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
@@ -1758,10 +1816,9 @@ void main() {
 	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
 	comp -= comp.xxyz * bitMask;
 	gl_FragColor = comp;
-}`, offscreenVertexShader = `${precision}
+}`, entityVertexShader = `${precision}
 attribute vec3 vertex;
 attribute vec3 normal;
-attribute vec2 uv;
 
 uniform mat4 mats[5];
 uniform vec3 lightDirection;
@@ -1769,7 +1826,11 @@ uniform vec3 lightDirection;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
-varying vec2 textureUV;
+
+#ifdef GROUND
+attribute vec2 uv;
+varying vec2 st;
+#endif
 
 const mat4 texUnitConverter = mat4(
 	.5, .0, .0, .0,
@@ -1785,8 +1846,10 @@ void main() {
 	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
 	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
-	textureUV = uv;
-}`, offscreenFragmentShader = `${precision}
+#ifdef GROUND
+	st = uv;
+#endif
+}`, entityFragmentShader = `${precision}
 uniform float far;
 uniform vec4 sky;
 uniform vec4 color;
@@ -1795,23 +1858,30 @@ uniform sampler2D shadowTexture;
 varying float intensity;
 varying float z;
 varying vec4 shadowPos;
-varying vec2 textureUV;
+
+#ifdef GROUND
+uniform float range;
+uniform vec2 player;
+varying vec2 st;
+#endif
 
 const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
 float decodeFloat(vec4 c) {
 	return dot(c, bitShift);
 }
 
-void main() {
-	float grid = 1. / 20.;
-	float thrsh = grid * .5;
-	float ym = step(mod(textureUV.y, grid), thrsh) * thrsh;
-	grid = step(mod(textureUV.x + ym, grid), thrsh);
+float light() {
 	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
 	float res = step(.5, intensity);
-	float light = res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
-	light *= max(1. - grid, .95);
+	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
+}
+
+void main() {
+	float light = light();
 	float fog = z / far;
+#ifdef GROUND
+	light *= max(.92, step(distance(player, st), range));
+#endif
 	gl_FragColor = vec4(
 		(1. - fog) * color.rgb * light + fog * sky.rgb,
 		color.a);
@@ -1819,29 +1889,37 @@ void main() {
 attribute vec2 vertex;
 attribute vec2 uv;
 
-varying vec2 textureUV;
+varying vec2 st;
 
 void main() {
 	gl_Position = vec4(vertex, 0., 1.);
-	textureUV = uv;
+	st = uv;
 }`, screenFragmentShader = `${precision}
-varying vec2 textureUV;
+varying vec2 st;
 
 uniform sampler2D offscreenTexture;
 
 void main() {
-	gl_FragColor = texture2D(offscreenTexture, textureUV.st);
+	gl_FragColor = texture2D(offscreenTexture, st);
 }`
 
 	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
 	cacheLocations(shadowProgram,
-		['vertex', 'normal', 'uv'],
+		['vertex', 'normal'],
 		['mats[0]', 'lightDirection'])
 
-	offscreenProgram = buildProgram(offscreenVertexShader,
-		offscreenFragmentShader)
-	cacheLocations(offscreenProgram,
+	const groundDefine = '#define GROUND 1\n'
+	groundProgram = buildProgram(
+		groundDefine + entityVertexShader,
+		groundDefine + entityFragmentShader)
+	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
+			'player', 'range'])
+
+	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
+	cacheLocations(entityProgram,
+		['vertex', 'normal'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
 
 	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
