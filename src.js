@@ -1627,7 +1627,7 @@ function createEntities() {
 	drag.dragging = false
 	gameOver = moveMade = enemyTurn = false
 	playerUnits = 5
-	enemyUnits = 6
+	enemyUnits = 7
 
 	const mat = new FA(idMat)
 
@@ -1678,7 +1678,7 @@ function createEntities() {
 
 	for (let o = playerUnits >> 1, x = -o, z = 4, i = 0;
 			i < playerUnits && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 2, z + (x & 1 ? 2 : 0),
+		blockables.push(addMan(x * 3, z + (x & 1 ? 4 : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
 
@@ -1687,7 +1687,7 @@ function createEntities() {
 
 	for (let o = enemyUnits >> 1, x = -o, z = -4, i = 0;
 			i < enemyUnits && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 2, z + (x & 1 ? -2 : 0),
+		blockables.push(addMan(x * 3, z + (x & 1 ? -4 : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
