@@ -424,7 +424,7 @@ function drawGround(setColor) {
 	setEntityUniforms(uniforms)
 
 	let range
-	if (selected) {
+	if (selected && selected.update == nop && !enemyTurn) {
 		// map world coordinates to UV coordinates
 		const m = selected.mat
 		playerPos[0] = (m[12] + groundSize) * groundFactor
