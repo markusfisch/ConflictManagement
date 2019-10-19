@@ -49,6 +49,7 @@ let gl,
 	entities = [],
 	blockablesLength,
 	blockables = [],
+	ground,
 	playerUnits,
 	enemyUnits,
 	enemyTurn,
@@ -392,11 +393,12 @@ function drawEntity(setColor, attribs, uniforms, matsLoc) {
 	gl.drawElements(gl.TRIANGLES, model.count, gl.UNSIGNED_SHORT, 0)
 }
 
-function drawEntities(setColor, attribs, uniforms, start) {
+function drawEntities(setColor, attribs, uniforms) {
 	const matsLoc = uniforms['mats[0]']
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
-	for (let i = start; i < entitiesLength; ++i) {
+	for (let i = entitiesLength; i--;) {
+		// draw may be nop so there's no need for a conditional
 		entities[i].draw(setColor, attribs, uniforms, matsLoc)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
@@ -415,11 +417,8 @@ function setEntityUniforms(uniforms) {
 
 function drawGround(setColor) {
 	gl.useProgram(groundProgram)
-
 	const attribs = groundProgram.attribs,
 		uniforms = groundProgram.uniforms,
-		matsLoc = uniforms['mats[0]'],
-		ground = entities[0],
 		model = ground.model
 
 	setEntityUniforms(uniforms)
@@ -448,7 +447,7 @@ function drawGround(setColor) {
 	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 32, 24)
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
 
-	setMats(matsLoc, ground.mat)
+	setMats(uniforms['mats[0]'], ground.mat)
 	setColor(uniforms, ground.color)
 
 	gl.drawElements(gl.TRIANGLES, model.count, gl.UNSIGNED_SHORT, 0)
@@ -468,7 +467,7 @@ function drawOffscreen() {
 	const attribs = entityProgram.attribs,
 		uniforms = entityProgram.uniforms
 	setEntityUniforms(uniforms)
-	drawEntities(setModelColor, attribs, uniforms, 1)
+	drawEntities(setModelColor, attribs, uniforms)
 }
 
 function drawShadowMap() {
@@ -479,7 +478,7 @@ function drawShadowMap() {
 	const attribs = shadowProgram.attribs,
 		uniforms = shadowProgram.uniforms
 	gl.uniform3fv(uniforms.lightDirection, lightDirection)
-	drawEntities(nop, attribs, uniforms, 0)
+	drawEntities(nop, attribs, uniforms)
 }
 
 function update() {
@@ -1633,11 +1632,11 @@ function createEntities() {
 	const mat = new FA(idMat)
 
 	scale(mat, mat, groundSize, 1, groundSize)
-	entities.push({
+	ground = {
 		mat: new FA(mat),
 		model: createGround(),
 		color: [.89, .77, .52, 1]
-	})
+	}
 
 	translate(mat, idMat, 0, -1, 0)
 	entities.push(cross = {
