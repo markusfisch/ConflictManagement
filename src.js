@@ -1597,7 +1597,7 @@ function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		cheer: function() {
 			const t = 1 - M.abs((now * .004) % 2 - 1),
 				angle = -M.PI + t
-			translate(bm, this.lockMat, 0, t * .1, 0)
+			translate(bm, this.lockMat, 0, 0, 0)
 			hm.set(bm)
 			translate(llm, bm, feetDist, 0, 0)
 			translate(rlm, bm, -feetDist, 0, 0)
