@@ -1889,8 +1889,8 @@ void main() {
 	float f = step(.9, texture2D(groundTexture, st).r);
 	c = f*c + (1. - f)*vec4(.79, .67, .42, 1.);
 	float dist = distance(player, st);
-	f = step(range, dist) + step(dist, range * .97);                            
-    c = f*c + (1. - f)*vec4(1., 1., 1., 1.);
+	f = step(range, dist) + step(dist, range * .97);
+	c = f*c + (1. - f)*vec4(1., 1., 1., 1.);
 #endif
 	gl_FragColor = vec4(
 		(1. - fog) * c.rgb * light + fog * sky.rgb,
