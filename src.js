@@ -39,6 +39,7 @@ let gl,
 	offscreenBuffer,
 	offscreenTexture,
 	groundProgram,
+	groundTexture,
 	entityProgram,
 	screenBuffer,
 	screenProgram,
@@ -352,9 +353,9 @@ function drawScreen() {
 	gl.vertexAttribPointer(attribs.vertex, 2, gl.FLOAT, false, 16, 0)
 	gl.vertexAttribPointer(attribs.uv, 2, gl.FLOAT, false, 16, 8)
 
-	gl.activeTexture(gl.TEXTURE1)
+	gl.activeTexture(gl.TEXTURE0)
 	gl.bindTexture(gl.TEXTURE_2D, offscreenTexture)
-	gl.uniform1i(uniforms.offscreenTexture, 1)
+	gl.uniform1i(uniforms.offscreenTexture, 0)
 
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.uv)
@@ -422,6 +423,10 @@ function drawGround(setColor) {
 		model = ground.model
 
 	setEntityUniforms(uniforms)
+
+	gl.activeTexture(gl.TEXTURE1)
+	gl.bindTexture(gl.TEXTURE_2D, groundTexture)
+	gl.uniform1i(uniforms.groundTexture, 1)
 
 	let range
 	if (selected && selected.update == nop && !enemyTurn) {
@@ -1859,6 +1864,7 @@ varying float z;
 varying vec4 shadowPos;
 
 #ifdef GROUND
+uniform sampler2D groundTexture;
 uniform float range;
 uniform vec2 player;
 varying vec2 st;
@@ -1878,12 +1884,15 @@ float light() {
 void main() {
 	float light = light();
 	float fog = z / far;
+	vec4 c = color;
 #ifdef GROUND
+	float f = step(.9, texture2D(groundTexture, st).r);
+	c = f*c + (1. - f)*vec4(.79, .67, .42, 1.);
 	light *= max(.92, step(range, distance(player, st)));
 #endif
 	gl_FragColor = vec4(
-		(1. - fog) * color.rgb * light + fog * sky.rgb,
-		color.a);
+		(1. - fog) * c.rgb * light + fog * sky.rgb,
+		c.a);
 }`, screenVertexShader = `${precision}
 attribute vec2 vertex;
 attribute vec2 uv;
@@ -1914,7 +1923,7 @@ void main() {
 	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'player', 'range'])
+			'groundTexture', 'player', 'range'])
 
 	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
 	cacheLocations(entityProgram,
@@ -1927,15 +1936,13 @@ void main() {
 		['offscreenTexture'])
 }
 
-function createTexture(w, h) {
+function createTexture() {
 	const texture = gl.createTexture()
 	gl.bindTexture(gl.TEXTURE_2D, texture)
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
-		gl.UNSIGNED_BYTE, null)
 	return texture
 }
 
@@ -1944,8 +1951,11 @@ function createFrameBuffer(w, h) {
 	gl.bindRenderbuffer(gl.RENDERBUFFER, rb)
 	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h)
 
-	const tx = createTexture(w, h),
-		fb = gl.createFramebuffer()
+	const tx = createTexture()
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
+		gl.UNSIGNED_BYTE, null)
+
+	const fb = gl.createFramebuffer()
 	gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
 	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
 		gl.TEXTURE_2D, tx, 0)
@@ -1960,6 +1970,42 @@ function createFrameBuffer(w, h) {
 		tx: tx,
 		fb: fb
 	}
+}
+
+function createGroundTexture() {
+	const size = 1024,
+		canvas = D.createElement('canvas'),
+		ctx = canvas.getContext('2d')
+	canvas.width = canvas.height = size
+	ctx.fillStyle = '#fff'
+	ctx.fillRect(0, 0, size, size)
+	ctx.fillStyle = ctx.strokeStyle = '#000'
+	ctx.lineJoin = 'bevel';
+	function drawRoundRect(x, y, width, height, radius) {
+		const r2 = radius / 2
+		x += r2
+		y += r2
+		width -= radius
+		height -= radius
+		ctx.lineWidth = radius;
+		ctx.strokeRect(x, y, width, height)
+		ctx.fillRect(x, y, width, height)
+	}
+	const min = M.round(size * .025),
+		max = M.round(size * .05)
+	for (let i = 100; i--;) {
+		const x = M.round(M.random() * size),
+			y = M.round(M.random() * size),
+			s = min + M.round(M.random() * max)
+		ctx.save()
+		ctx.translate(x, y)
+		ctx.rotate(M.random() * M.TAU)
+		drawRoundRect(0, 0, s, s, M.round(s * .5))
+		ctx.restore()
+	}
+	groundTexture = createTexture()
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, canvas)
+	gl.bindTexture(gl.TEXTURE_2D, null)
 }
 
 function createScreenBuffer() {
@@ -2016,6 +2062,7 @@ function init() {
 	createShadowBuffer()
 	createOffscreenBuffer()
 	createScreenBuffer()
+	createGroundTexture()
 	createPrograms()
 	createEntities()
 
