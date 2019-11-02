@@ -19,7 +19,10 @@ const M = Math,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
-	playerPos = [-1, -1],
+	playerLength = 5,
+	enemyLength = 7,
+	playerPosition = [-1, -1],
+	enemyPositions = new FA(enemyLength * 2),
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 13, 11],
 	pointerSpot = [0, 0, 0],
@@ -51,8 +54,6 @@ let gl,
 	blockablesLength,
 	blockables = [],
 	ground,
-	playerUnits,
-	enemyUnits,
 	enemyTurn,
 	moveMade,
 	cross,
@@ -432,14 +433,28 @@ function drawGround(setColor) {
 	if (selected && selected.update == nop && !enemyTurn) {
 		// map world coordinates to UV coordinates
 		const m = selected.mat
-		playerPos[0] = (m[12] + groundSize) * groundFactor
-		playerPos[1] = (m[14] + groundSize) * groundFactor
+		playerPosition[0] = (m[12] + groundSize) * groundFactor
+		playerPosition[1] = (m[14] + groundSize) * groundFactor
 		range = .5 / groundSize * selected.range
+		for (let i = 0, o = 0; i < enemyLength; ++i) {
+			const b = blockables[playerLength + i]
+			let x, z
+			if (b.life < 1) {
+				x = z = -1
+			} else {
+				const m = b.mat
+				x = (m[12] + groundSize) * groundFactor
+				z = (m[14] + groundSize) * groundFactor
+			}
+			enemyPositions[o++] = x
+			enemyPositions[o++] = z
+		}
 	} else {
-		playerPos[0] = playerPos[1] = -1
+		playerPosition[0] = playerPosition[1] = -1
 		range = -1
 	}
-	gl.uniform2fv(uniforms.player, playerPos)
+	gl.uniform2fv(uniforms['playerPosition'], playerPosition)
+	gl.uniform2fv(uniforms['enemyPositions[0]'], enemyPositions)
 	gl.uniform1f(uniforms.range, range)
 
 	gl.enableVertexAttribArray(attribs.vertex)
@@ -568,7 +583,7 @@ function getBlockableNear(x, z, sqr, ignore) {
 }
 
 function getSelectableNear(x, z) {
-	for (let i = 0; i < playerUnits; ++i) {
+	for (let i = 0; i < playerLength; ++i) {
 		const e = blockables[i]
 		if (e.selectable && dist(e.mat, x, z) < .75) {
 			return e
@@ -618,9 +633,9 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 }
 
 function getRandomEnemy() {
-	let r = M.random() * enemyUnits | 0
-	for (let i = 0; i < enemyUnits; ++i) {
-		const b = blockables[playerUnits + (r++ % enemyUnits)]
+	let r = M.random() * enemyLength | 0
+	for (let i = 0; i < enemyLength; ++i) {
+		const b = blockables[playerLength + (r++ % enemyLength)]
 		if (b.life > 0) {
 			return b
 		}
@@ -631,7 +646,7 @@ function calculateEnemyTurn() {
 	let alive = 0,
 		agent,
 		minD = 1000
-	for (let i = playerUnits, l = i + enemyUnits; i < l; ++i) {
+	for (let i = playerLength, l = i + enemyLength; i < l; ++i) {
 		const e = blockables[i]
 		if (e.life < 1) {
 			continue
@@ -640,7 +655,7 @@ function calculateEnemyTurn() {
 		const em = e.mat,
 			ex = em[12],
 			ez = em[14]
-		for (let j = 0; j < playerUnits; ++j) {
+		for (let j = 0; j < playerLength; ++j) {
 			const p = blockables[j]
 			if (p.life < 1) {
 				continue
@@ -726,10 +741,10 @@ function hit(attacker, victim) {
 		let from, to
 		if (victim.selectable) {
 			from = 0
-			to = playerUnits
+			to = playerLength
 		} else {
-			from = playerUnits
-			to = from + enemyUnits
+			from = playerLength
+			to = from + enemyLength
 		}
 		kill(victim)
 		const next = getNextAliveUnit(from, to)
@@ -746,10 +761,10 @@ function hit(attacker, victim) {
 			gameOver = now
 			if (attacker.selectable) {
 				from = 0
-				to = playerUnits
+				to = playerLength
 			} else {
-				from = playerUnits
-				to = from + enemyUnits
+				from = playerLength
+				to = from + enemyLength
 			}
 			cheerWinners(from, to)
 			return
@@ -1631,8 +1646,6 @@ function createEntities() {
 	blockables = []
 	drag.dragging = false
 	gameOver = moveMade = enemyTurn = false
-	playerUnits = 5
-	enemyUnits = 7
 
 	const mat = new FA(idMat)
 
@@ -1681,8 +1694,8 @@ function createEntities() {
 		playerColor = [1, 1, 1, 1],
 		enemyColor = [.1, .1, .1, 1]
 
-	for (let o = playerUnits >> 1, x = -o, z = 4, i = 0;
-			i < playerUnits && x <= o; ++x, ++i) {
+	for (let o = playerLength >> 1, x = -o, z = 4, i = 0;
+			i < playerLength && x <= o; ++x, ++i) {
 		blockables.push(addMan(x * 3, z + (x & 1 ? 4 : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
@@ -1690,8 +1703,8 @@ function createEntities() {
 	selected = blockables[blockables.length >> 1]
 	setMarker(selected.mat)
 
-	for (let o = enemyUnits >> 1, x = -o, z = -4, i = 0;
-			i < enemyUnits && x <= o; ++x, ++i) {
+	for (let o = enemyLength >> 1, x = -o, z = -4, i = 0;
+			i < enemyLength && x <= o; ++x, ++i) {
 		blockables.push(addMan(x * 3, z + (x & 1 ? -4 : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
@@ -1866,7 +1879,8 @@ varying vec4 shadowPos;
 #ifdef GROUND
 uniform sampler2D groundTexture;
 uniform float range;
-uniform vec2 player;
+uniform vec2 playerPosition;
+uniform vec2 enemyPositions[${enemyLength}];
 varying vec2 st;
 #endif
 
@@ -1887,14 +1901,19 @@ void main() {
 	vec4 c = color;
 #ifdef GROUND
 	float f = step(.9, texture2D(groundTexture, st).r);
-	c = f*c + (1. - f)*vec4(.79, .67, .42, 1.);
-	float dist = distance(player, st);
-	f = step(range, dist) + step(dist, range * .97);
-	c = f*c + (1. - f)*vec4(1., 1., 1., 1.);
+	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
+
+	float dist = distance(playerPosition, st);
+	f = step(dist, range);
+	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
+
+	for (int i = 0; i < ${enemyLength}; ++i) {
+		dist = distance(enemyPositions[i], st);
+		f = step(dist, range);
+		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
+	}
 #endif
-	gl_FragColor = vec4(
-		(1. - fog) * c.rgb * light + fog * sky.rgb,
-		c.a);
+	gl_FragColor = vec4((1. - fog) * c.rgb * light + fog * sky.rgb, c.a);
 }`, screenVertexShader = `${precision}
 attribute vec2 vertex;
 attribute vec2 uv;
@@ -1925,7 +1944,7 @@ void main() {
 	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'player', 'range'])
+			'groundTexture', 'playerPosition', 'enemyPositions[0]', 'range'])
 
 	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
 	cacheLocations(entityProgram,
