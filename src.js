@@ -885,7 +885,7 @@ function dragCamera() {
 	const dx = pointersX[0] - drag.x,
 		dy = pointersY[0] - drag.y,
 		d = dx*dx + dy*dy,
-		f = 8 * drag.mod
+		f = 8
 	if (d > .001) {
 		lookAt(drag.cx + dx * f, drag.cz + dy * f)
 		drag.dragging = true
@@ -947,9 +947,8 @@ function pointerDown(event) {
 function resize() {
 	gl.canvas.width = screenWidth = gl.canvas.clientWidth
 	gl.canvas.height = screenHeight = gl.canvas.clientHeight
-	const aspect = screenWidth / screenHeight
-	drag.mod = aspect
-	setPerspective(projMat, M.PI * .125, aspect, .1, horizon)
+	setPerspective(projMat, M.PI * .125, screenWidth / screenHeight, .1,
+		horizon)
 }
 
 function calculateNormals(vertices, indicies) {
