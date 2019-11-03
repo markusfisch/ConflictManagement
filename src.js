@@ -1692,20 +1692,22 @@ function createEntities() {
 		skinColor = [.49, .37, .12, 1],
 		clubColor = [.29, .17, 0, 1],
 		playerColor = [1, 1, 1, 1],
-		enemyColor = [.1, .1, .1, 1]
+		enemyColor = [.1, .1, .1, 1],
+		firstRow = 4,
+		secondRow = 7
 
-	for (let o = playerLength >> 1, x = -o, z = 4, i = 0;
+	for (let o = playerLength >> 1, x = -o, z = firstRow, i = 0;
 			i < playerLength && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 3, z + (x & 1 ? 4 : 0),
+		blockables.push(addMan(x * 3, z + (x & 1 ? secondRow : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
 
 	selected = blockables[blockables.length >> 1]
 	setMarker(selected.mat)
 
-	for (let o = enemyLength >> 1, x = -o, z = -4, i = 0;
+	for (let o = enemyLength >> 1, x = -o, z = -firstRow, i = 0;
 			i < enemyLength && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 3, z + (x & 1 ? -4 : 0),
+		blockables.push(addMan(x * 3, z + (x & 1 ? -secondRow : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
