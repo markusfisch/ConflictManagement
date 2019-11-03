@@ -30,8 +30,8 @@ const M = Math,
 	pointersY = [],
 	drag = {},
 	horizon = 50,
-	groundSize = 30,
-	groundFactor = .5 / 30,
+	groundSize = 50,
+	groundFactor = .5 / groundSize,
 	offscreenSize = 256,
 	shadowTextureSize = 1024
 
@@ -435,7 +435,7 @@ function drawGround(setColor) {
 		const m = selected.mat
 		playerPosition[0] = (m[12] + groundSize) * groundFactor
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
-		range = .5 / groundSize * selected.range
+		range = groundFactor * selected.range
 		for (let i = 0, o = 0; i < enemyLength; ++i) {
 			const b = blockables[playerLength + i]
 			let x, z
@@ -1550,7 +1550,7 @@ function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		color: dressColor,
 		selectable: selectable,
 		life: 1,
-		range: groundSize * .2,
+		range: 6,
 		lockMat: new FA(idMat),
 		die: function() {
 			let t = now - this.timeOfDeath
