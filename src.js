@@ -22,7 +22,6 @@ const M = Math,
 	playerLength = 5,
 	enemyLength = 7,
 	playerPosition = [-1, -1],
-	enemyPositions = new FA(enemyLength * 2),
 	skyColor = [.06, .06, .06, 1],
 	camPos = [0, 13, 11],
 	pointerSpot = [0, 0, 0],
@@ -54,6 +53,7 @@ let gl,
 	entities = [],
 	blockablesLength,
 	blockables = [],
+	blockPositions,
 	ground,
 	enemyTurn,
 	moveMade,
@@ -437,25 +437,19 @@ function drawGround(setColor) {
 		playerPosition[0] = (m[12] + groundSize) * groundFactor
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
 		range = (selected.range + attackRange) * groundFactor
-		for (let i = 0, o = 0; i < enemyLength; ++i) {
-			const b = blockables[playerLength + i]
-			let x, z
-			if (b.life < 1) {
-				x = z = -1
-			} else {
-				const m = b.mat
-				x = (m[12] + groundSize) * groundFactor
-				z = (m[14] + groundSize) * groundFactor
-			}
-			enemyPositions[o++] = x
-			enemyPositions[o++] = z
+		for (let i = 0, o = 0; i < blockablesLength; ++i) {
+			const b = blockables[i],
+				bm = b.mat
+			blockPositions[o++] = (bm[12] + groundSize) * groundFactor
+			blockPositions[o++] = (bm[14] + groundSize) * groundFactor
+			blockPositions[o++] = b.life
 		}
 	} else {
 		playerPosition[0] = playerPosition[1] = -1
 		range = -1
 	}
 	gl.uniform2fv(uniforms['playerPosition'], playerPosition)
-	gl.uniform2fv(uniforms['enemyPositions[0]'], enemyPositions)
+	gl.uniform3fv(uniforms['blockPositions[0]'], blockPositions)
 	gl.uniform1f(uniforms.range, range)
 
 	gl.enableVertexAttribArray(attribs.vertex)
@@ -1737,6 +1731,8 @@ function createEntities() {
 	blockablesLength = blockables.length
 	entitiesLength = entities.length
 
+	blockPositions = new FA(blockablesLength * 3)
+
 	// complete properties
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
@@ -1744,6 +1740,8 @@ function createEntities() {
 		e.draw = e.draw || drawEntity
 		e.selectable = e.selectable || false
 	}
+
+	createPrograms()
 }
 
 function cacheUniformLocations(program, uniforms) {
@@ -1882,7 +1880,7 @@ varying vec4 shadowPos;
 uniform sampler2D groundTexture;
 uniform float range;
 uniform vec2 playerPosition;
-uniform vec2 enemyPositions[${enemyLength}];
+uniform vec3 blockPositions[${blockablesLength}];
 varying vec2 st;
 #endif
 
@@ -1897,6 +1895,22 @@ float light() {
 	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
 }
 
+#ifdef GROUND
+float unblocked(vec2 center, float dist) {
+	vec2 p = st - center;
+	float a = atan(p.y, p.x);
+	float f = 1.;
+	for (int i = 0; i < ${blockablesLength}; ++i) {
+		p = blockPositions[i].xy;
+		float beyond = step(dist, distance(center, p));
+		p -= center;
+		float dir = step(.1, abs(atan(p.y, p.x) - a));
+		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
+	}
+	return f;
+}
+#endif
+
 void main() {
 	float light = light();
 	float fog = z / far;
@@ -1905,13 +1919,15 @@ void main() {
 	float f = step(.9, texture2D(groundTexture, st).r);
 	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
 
-	float dist = distance(playerPosition, st);
-	f = step(dist, range);
+	float d = distance(playerPosition, st);
+	f = step(d, range) * unblocked(playerPosition, d);
 	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
 
-	for (int i = 0; i < ${enemyLength}; ++i) {
-		dist = distance(enemyPositions[i], st);
-		f = step(dist, range);
+	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
+		vec3 bp = blockPositions[i];
+		vec2 p = bp.xy * min(bp.z, 1.);
+		d = distance(p, st);
+		f = step(d, range) * unblocked(p, d);
 		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
 	}
 #endif
@@ -1946,7 +1962,7 @@ void main() {
 	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'playerPosition', 'enemyPositions[0]', 'range'])
+			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
 
 	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
 	cacheLocations(entityProgram,
@@ -2084,7 +2100,6 @@ function init() {
 	createOffscreenBuffer()
 	createScreenBuffer()
 	createGroundTexture()
-	createPrograms()
 	createEntities()
 
 	gl.enable(gl.DEPTH_TEST)
