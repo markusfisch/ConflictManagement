@@ -32,6 +32,7 @@ const M = Math,
 	horizon = 50,
 	groundSize = 50,
 	groundFactor = .5 / groundSize,
+	attackRange = 1,
 	offscreenSize = 256,
 	shadowTextureSize = 1024
 
@@ -435,7 +436,7 @@ function drawGround(setColor) {
 		const m = selected.mat
 		playerPosition[0] = (m[12] + groundSize) * groundFactor
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
-		range = selected.range * groundFactor
+		range = (selected.range + attackRange) * groundFactor
 		for (let i = 0, o = 0; i < enemyLength; ++i) {
 			const b = blockables[playerLength + i]
 			let x, z
@@ -820,8 +821,8 @@ function moveTo(e, x, z) {
 			if (!blockable && bd < .5) {
 				blockable = b
 			}
-			if (!attackable && bd < 1 && b.selectable != e.selectable &&
-					b.life > 0) {
+			if (!attackable && bd < attackRange &&
+					b.selectable != e.selectable && b.life > 0) {
 				attackable = b
 			}
 		}
