@@ -966,6 +966,237 @@ function lookAt(x, z) {
 	lightDirection[2] = lightViewMat[10]
 }
 
+function cacheUniformLocations(program, uniforms) {
+	if (program.uniforms === undefined) {
+		program.uniforms = {}
+	}
+	for (let i = 0, l = uniforms.length; i < l; ++i) {
+		const name = uniforms[i],
+			loc = gl.getUniformLocation(program, name)
+		if (!loc) {
+			throw 'uniform "' + name + '" not found'
+		}
+		program.uniforms[name] = loc
+	}
+}
+
+function cacheAttribLocations(program, attribs) {
+	if (program.attribs === undefined) {
+		program.attribs = {}
+	}
+	for (let i = 0, l = attribs.length; i < l; ++i) {
+		const name = attribs[i],
+			loc = gl.getAttribLocation(program, name)
+		if (loc < 0) {
+			throw 'attribute "' + name + '" not found'
+		}
+		program.attribs[name] = loc
+	}
+}
+
+function cacheLocations(program, attribs, uniforms) {
+	cacheAttribLocations(program, attribs)
+	cacheUniformLocations(program, uniforms)
+}
+
+function compileShader(src, type) {
+	const shader = gl.createShader(type)
+	gl.shaderSource(shader, src)
+	gl.compileShader(shader)
+	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+		throw gl.getShaderInfoLog(shader)
+	}
+	return shader
+}
+
+function linkProgram(vs, fs) {
+	const p = gl.createProgram()
+	gl.attachShader(p, vs)
+	gl.attachShader(p, fs)
+	gl.linkProgram(p)
+	if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+		throw gl.getProgramInfoLog(p)
+	}
+	return p
+}
+
+function buildProgram(vertexSource, fragmentSource) {
+	return linkProgram(
+		compileShader(vertexSource, gl.VERTEX_SHADER),
+		compileShader(fragmentSource, gl.FRAGMENT_SHADER))
+}
+
+function createPrograms() {
+	const precision = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif`, lightVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+
+uniform mat4 mats[5];
+uniform vec3 lightDirection;
+
+varying float bias;
+
+void main() {
+	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
+		lightDirection));
+	bias = .001 * intensity;
+	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
+}`, lightFragmentShader = `${precision}
+varying float bias;
+
+void main() {
+	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
+	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
+	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
+	comp -= comp.xxyz * bitMask;
+	gl_FragColor = comp;
+}`, entityVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+
+uniform mat4 mats[5];
+uniform vec3 lightDirection;
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+#ifdef GROUND
+attribute vec2 uv;
+varying vec2 st;
+#endif
+
+const mat4 texUnitConverter = mat4(
+	.5, .0, .0, .0,
+	.0, .5, .0, .0,
+	.0, .0, .5, .0,
+	.5, .5, .5, 1.
+);
+
+void main() {
+	vec4 v = vec4(vertex, 1.);
+	gl_Position = mats[0] * mats[1] * v;
+	z = gl_Position.z;
+	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
+		lightDirection));
+	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
+#ifdef GROUND
+	st = uv;
+#endif
+}`, entityFragmentShader = `${precision}
+uniform float far;
+uniform vec4 sky;
+uniform vec4 color;
+uniform sampler2D shadowTexture;
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+#ifdef GROUND
+uniform sampler2D groundTexture;
+uniform float range;
+uniform vec2 playerPosition;
+uniform vec3 blockPositions[${blockablesLength}];
+varying vec2 st;
+#endif
+
+const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
+float decodeFloat(vec4 c) {
+	return dot(c, bitShift);
+}
+
+float light() {
+	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
+	float res = step(.5, intensity);
+	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
+}
+
+#ifdef GROUND
+float unblocked(vec2 center, float dist) {
+	vec2 p = st - center;
+	float a = atan(p.y, p.x);
+	float f = 1.;
+	for (int i = 0; i < ${blockablesLength}; ++i) {
+		p = blockPositions[i].xy;
+		float beyond = step(dist, distance(center, p));
+		p -= center;
+		float dir = step(.1, abs(atan(p.y, p.x) - a));
+		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
+	}
+	return f;
+}
+#endif
+
+void main() {
+	float light = light();
+	float fog = z / far;
+	vec4 c = color;
+#ifdef GROUND
+	float f = step(.9, texture2D(groundTexture, st).r);
+	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
+
+	float d = distance(playerPosition, st);
+	f = step(d, range) * unblocked(playerPosition, d);
+	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
+
+	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
+		vec3 bp = blockPositions[i];
+		vec2 p = bp.xy * min(bp.z, 1.);
+		d = distance(p, st);
+		f = step(d, range) * unblocked(p, d);
+		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
+	}
+#endif
+	gl_FragColor = vec4((1. - fog) * c.rgb * light + fog * sky.rgb, c.a);
+}`, screenVertexShader = `${precision}
+attribute vec2 vertex;
+attribute vec2 uv;
+
+varying vec2 st;
+
+void main() {
+	gl_Position = vec4(vertex, 0., 1.);
+	st = uv;
+}`, screenFragmentShader = `${precision}
+varying vec2 st;
+
+uniform sampler2D offscreenTexture;
+
+void main() {
+	gl_FragColor = texture2D(offscreenTexture, st);
+}`
+
+	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
+	cacheLocations(shadowProgram,
+		['vertex', 'normal'],
+		['mats[0]', 'lightDirection'])
+
+	const groundDefine = '#define GROUND 1\n'
+	groundProgram = buildProgram(
+		groundDefine + entityVertexShader,
+		groundDefine + entityFragmentShader)
+	cacheLocations(groundProgram,
+		['vertex', 'normal', 'uv'],
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
+			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
+
+	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
+	cacheLocations(entityProgram,
+		['vertex', 'normal'],
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
+
+	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
+	cacheLocations(screenProgram,
+		['vertex', 'uv'],
+		['offscreenTexture'])
+}
+
 function calculateNormals(vertices, indicies) {
 	const normals = []
 
@@ -1762,237 +1993,6 @@ function createEntities() {
 	}
 
 	createPrograms()
-}
-
-function cacheUniformLocations(program, uniforms) {
-	if (program.uniforms === undefined) {
-		program.uniforms = {}
-	}
-	for (let i = 0, l = uniforms.length; i < l; ++i) {
-		const name = uniforms[i],
-			loc = gl.getUniformLocation(program, name)
-		if (!loc) {
-			throw 'uniform "' + name + '" not found'
-		}
-		program.uniforms[name] = loc
-	}
-}
-
-function cacheAttribLocations(program, attribs) {
-	if (program.attribs === undefined) {
-		program.attribs = {}
-	}
-	for (let i = 0, l = attribs.length; i < l; ++i) {
-		const name = attribs[i],
-			loc = gl.getAttribLocation(program, name)
-		if (loc < 0) {
-			throw 'attribute "' + name + '" not found'
-		}
-		program.attribs[name] = loc
-	}
-}
-
-function cacheLocations(program, attribs, uniforms) {
-	cacheAttribLocations(program, attribs)
-	cacheUniformLocations(program, uniforms)
-}
-
-function compileShader(src, type) {
-	const shader = gl.createShader(type)
-	gl.shaderSource(shader, src)
-	gl.compileShader(shader)
-	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		throw gl.getShaderInfoLog(shader)
-	}
-	return shader
-}
-
-function linkProgram(vs, fs) {
-	const p = gl.createProgram()
-	gl.attachShader(p, vs)
-	gl.attachShader(p, fs)
-	gl.linkProgram(p)
-	if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-		throw gl.getProgramInfoLog(p)
-	}
-	return p
-}
-
-function buildProgram(vertexSource, fragmentSource) {
-	return linkProgram(
-		compileShader(vertexSource, gl.VERTEX_SHADER),
-		compileShader(fragmentSource, gl.FRAGMENT_SHADER))
-}
-
-function createPrograms() {
-	const precision = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif`, lightVertexShader = `${precision}
-attribute vec3 vertex;
-attribute vec3 normal;
-
-uniform mat4 mats[5];
-uniform vec3 lightDirection;
-
-varying float bias;
-
-void main() {
-	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
-		lightDirection));
-	bias = .001 * intensity;
-	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
-}`, lightFragmentShader = `${precision}
-varying float bias;
-
-void main() {
-	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
-	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
-	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
-	comp -= comp.xxyz * bitMask;
-	gl_FragColor = comp;
-}`, entityVertexShader = `${precision}
-attribute vec3 vertex;
-attribute vec3 normal;
-
-uniform mat4 mats[5];
-uniform vec3 lightDirection;
-
-varying float intensity;
-varying float z;
-varying vec4 shadowPos;
-
-#ifdef GROUND
-attribute vec2 uv;
-varying vec2 st;
-#endif
-
-const mat4 texUnitConverter = mat4(
-	.5, .0, .0, .0,
-	.0, .5, .0, .0,
-	.0, .0, .5, .0,
-	.5, .5, .5, 1.
-);
-
-void main() {
-	vec4 v = vec4(vertex, 1.);
-	gl_Position = mats[0] * mats[1] * v;
-	z = gl_Position.z;
-	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
-		lightDirection));
-	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
-#ifdef GROUND
-	st = uv;
-#endif
-}`, entityFragmentShader = `${precision}
-uniform float far;
-uniform vec4 sky;
-uniform vec4 color;
-uniform sampler2D shadowTexture;
-
-varying float intensity;
-varying float z;
-varying vec4 shadowPos;
-
-#ifdef GROUND
-uniform sampler2D groundTexture;
-uniform float range;
-uniform vec2 playerPosition;
-uniform vec3 blockPositions[${blockablesLength}];
-varying vec2 st;
-#endif
-
-const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
-float decodeFloat(vec4 c) {
-	return dot(c, bitShift);
-}
-
-float light() {
-	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
-	float res = step(.5, intensity);
-	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
-}
-
-#ifdef GROUND
-float unblocked(vec2 center, float dist) {
-	vec2 p = st - center;
-	float a = atan(p.y, p.x);
-	float f = 1.;
-	for (int i = 0; i < ${blockablesLength}; ++i) {
-		p = blockPositions[i].xy;
-		float beyond = step(dist, distance(center, p));
-		p -= center;
-		float dir = step(.1, abs(atan(p.y, p.x) - a));
-		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
-	}
-	return f;
-}
-#endif
-
-void main() {
-	float light = light();
-	float fog = z / far;
-	vec4 c = color;
-#ifdef GROUND
-	float f = step(.9, texture2D(groundTexture, st).r);
-	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
-
-	float d = distance(playerPosition, st);
-	f = step(d, range) * unblocked(playerPosition, d);
-	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
-
-	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
-		vec3 bp = blockPositions[i];
-		vec2 p = bp.xy * min(bp.z, 1.);
-		d = distance(p, st);
-		f = step(d, range) * unblocked(p, d);
-		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
-	}
-#endif
-	gl_FragColor = vec4((1. - fog) * c.rgb * light + fog * sky.rgb, c.a);
-}`, screenVertexShader = `${precision}
-attribute vec2 vertex;
-attribute vec2 uv;
-
-varying vec2 st;
-
-void main() {
-	gl_Position = vec4(vertex, 0., 1.);
-	st = uv;
-}`, screenFragmentShader = `${precision}
-varying vec2 st;
-
-uniform sampler2D offscreenTexture;
-
-void main() {
-	gl_FragColor = texture2D(offscreenTexture, st);
-}`
-
-	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
-	cacheLocations(shadowProgram,
-		['vertex', 'normal'],
-		['mats[0]', 'lightDirection'])
-
-	const groundDefine = '#define GROUND 1\n'
-	groundProgram = buildProgram(
-		groundDefine + entityVertexShader,
-		groundDefine + entityFragmentShader)
-	cacheLocations(groundProgram,
-		['vertex', 'normal', 'uv'],
-		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
-
-	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
-	cacheLocations(entityProgram,
-		['vertex', 'normal'],
-		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
-
-	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
-	cacheLocations(screenProgram,
-		['vertex', 'uv'],
-		['offscreenTexture'])
 }
 
 function createTexture() {
