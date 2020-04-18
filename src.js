@@ -946,6 +946,26 @@ function resize() {
 		horizon)
 }
 
+function clamp(v, min, max) {
+	return M.max(min, M.min(max, v))
+}
+
+function lookAt(x, z) {
+	x = clamp(x, -10, 10)
+	z = clamp(z, -10, 10)
+
+	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
+	rotate(viewMat, viewMat, -.9, 1, 0, 0)
+	invert(viewMat, viewMat)
+
+	translate(lightViewMat, idMat, x, 35, z)
+	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
+	invert(lightViewMat, lightViewMat)
+	lightDirection[0] = lightViewMat[2]
+	lightDirection[1] = lightViewMat[6]
+	lightDirection[2] = lightViewMat[10]
+}
+
 function calculateNormals(vertices, indicies) {
 	const normals = []
 
@@ -2069,26 +2089,6 @@ function createShadowBuffer() {
 		shadowTextureSize)
 	shadowTexture = buf.tx
 	shadowBuffer = buf.fb
-}
-
-function clamp(v, min, max) {
-	return M.max(min, M.min(max, v))
-}
-
-function lookAt(x, z) {
-	x = clamp(x, -10, 10)
-	z = clamp(z, -10, 10)
-
-	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
-	rotate(viewMat, viewMat, -.9, 1, 0, 0)
-	invert(viewMat, viewMat)
-
-	translate(lightViewMat, idMat, x, 35, z)
-	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
-	invert(lightViewMat, lightViewMat)
-	lightDirection[0] = lightViewMat[2]
-	lightDirection[1] = lightViewMat[6]
-	lightDirection[2] = lightViewMat[10]
 }
 
 function init() {
