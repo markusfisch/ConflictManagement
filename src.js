@@ -1,77 +1,83 @@
 'use strict'
 
-const M = Math,
-	D = document,
-	W = window,
-	FA = Float32Array,
-	idMat = new FA([
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1]),
-	cacheMat = new FA(16),
-	viewMat = new FA(16),
-	lightViewMat = new FA(16),
-	mats = new FA(80),
-	projMat = new FA(mats.buffer, 0, 16),
-	modelViewMat = new FA(mats.buffer, 64, 16),
-	normalMat = new FA(mats.buffer, 128, 16),
-	lightProjMat = new FA(mats.buffer, 192, 16),
-	lightModelViewMat = new FA(mats.buffer, 256, 16),
-	lightDirection = [0, 0, 0],
-	playerLength = 5,
-	enemyLength = 7,
-	playerPosition = [-1, -1],
-	skyColor = [.06, .06, .06, 1],
-	camPos = [0, 13, 11],
-	pointerSpot = [0, 0, 0],
-	pointersX = [],
-	pointersY = [],
-	drag = {},
-	horizon = 50,
-	groundSize = 50,
-	groundFactor = .5 / groundSize,
-	attackRange = 1,
-	offscreenSize = 256,
-	shadowTextureSize = 1024
+////////////////////////////////////////////////////////////////////// VERTICES
 
-let gl,
-	shadowBuffer,
-	shadowTexture,
-	shadowProgram,
-	offscreenBuffer,
-	offscreenTexture,
-	groundProgram,
-	groundTexture,
-	entityProgram,
-	screenBuffer,
-	screenProgram,
-	screenWidth,
-	screenHeight,
-	pointersLength,
-	entitiesLength,
-	entities = [],
-	blockablesLength,
-	blockables = [],
-	blockPositions,
-	ground,
-	enemyTurn,
-	moveMade,
-	cross,
-	marker,
-	selected,
-	gameOver,
-	now
+function calculateNormals(vertices, indicies) {
+	const normals = []
 
-M.PI2 = M.PI2 || M.PI / 2
-M.TAU = M.TAU || M.PI * 2
+	for (let i = 0, l = indicies.length; i < l;) {
+		const a = indicies[i++] * 3,
+			b = indicies[i++] * 3,
+			c = indicies[i++] * 3,
+			x1 = vertices[a],
+			y1 = vertices[a + 1],
+			z1 = vertices[a + 2],
+			x2 = vertices[b],
+			y2 = vertices[b + 1],
+			z2 = vertices[b + 2],
+			x3 = vertices[c],
+			y3 = vertices[c + 1],
+			z3 = vertices[c + 2],
+			ux = x2 - x1,
+			uy = y2 - y1,
+			uz = z2 - z1,
+			vx = x3 - x1,
+			vy = y3 - y1,
+			vz = z3 - z1,
+			nx = uy * vz - uz * vy,
+			ny = uz * vx - ux * vz,
+			nz = ux * vy - uy * vx
+
+		normals[a] = nx
+		normals[a + 1] = ny
+		normals[a + 2] = nz
+
+		normals[b] = nx
+		normals[b + 1] = ny
+		normals[b + 2] = nz
+
+		normals[c] = nx
+		normals[c + 1] = ny
+		normals[c + 2] = nz
+	}
+
+	return normals
+}
+
+function makeVerticesUnique(vertices, indicies, uvs) {
+	const used = []
+	for (let i = 0, l = indicies.length; i < l; ++i) {
+		const idx = indicies[i]
+		if (used.includes(idx)) {
+			let vo = idx * 3
+			indicies[i] = vertices.length / 3
+			vertices.push(vertices[vo++])
+			vertices.push(vertices[vo++])
+			vertices.push(vertices[vo])
+			if (uvs) {
+				let o = idx << 1
+				uvs.push(uvs[o++])
+				uvs.push(uvs[o])
+			}
+		} else {
+			used.push(idx)
+		}
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////// NOP
 
 function nop() {
 	// it's faster to run an empty function than using a conditional
-	// statement thanks to branch prediction
+	// statement thanks to branch prediction; this function can't be
+	// first or the Closure Compiler will mistakenly remove it
 }
 
-// from https://github.com/toji/gl-matrix
+//////////////////////////////////////////////////////////////////////// MATRIX
+///////////////////// shamelessly stolen from https://github.com/toji/gl-matrix
+
+const M = Math
+
 function invert(out, a) {
 	const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
 		a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
@@ -122,7 +128,6 @@ function invert(out, a) {
 	out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * d
 }
 
-// from https://github.com/toji/gl-matrix
 function multiply(out, a, b) {
 	let a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
 		a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
@@ -155,7 +160,6 @@ function multiply(out, a, b) {
 	out[15] = b0*a03 + b1*a13 + b2*a23 + b3*a33
 }
 
-// from https://github.com/toji/gl-matrix
 function rotate(out, a, rad, x, y, z) {
 	let len = M.sqrt(x * x + y * y + z * z),
 		s, c, t,
@@ -211,7 +215,6 @@ function rotate(out, a, rad, x, y, z) {
 	}
 }
 
-// from https://github.com/toji/gl-matrix
 function scale(out, a, x, y, z) {
 	out[0] = a[0] * x
 	out[1] = a[1] * x
@@ -231,7 +234,6 @@ function scale(out, a, x, y, z) {
 	out[15] = a[15]
 }
 
-// from https://github.com/toji/gl-matrix
 function translate(out, a, x, y, z) {
 	if (a === out) {
 		out[12] = a[0] * x + a[4] * y + a[8] * z + a[12]
@@ -258,7 +260,6 @@ function translate(out, a, x, y, z) {
 	}
 }
 
-// from https://github.com/toji/gl-matrix
 function transpose(out, a) {
 	if (out === a) {
 		const a01 = a[1], a02 = a[2], a03 = a[3],
@@ -338,11 +339,850 @@ function setPerspective(out, fov, aspect, near, far) {
 	out[15] = 0
 }
 
+//////////////////////////////////////////////////////////////////////////// GL
+
+let gl
+
+function cacheUniformLocations(program, uniforms) {
+	if (program.uniforms === undefined) {
+		program.uniforms = {}
+	}
+	for (let i = 0, l = uniforms.length; i < l; ++i) {
+		const name = uniforms[i],
+			loc = gl.getUniformLocation(program, name)
+		if (!loc) {
+			throw 'uniform "' + name + '" not found'
+		}
+		program.uniforms[name] = loc
+	}
+}
+
+function cacheAttribLocations(program, attribs) {
+	if (program.attribs === undefined) {
+		program.attribs = {}
+	}
+	for (let i = 0, l = attribs.length; i < l; ++i) {
+		const name = attribs[i],
+			loc = gl.getAttribLocation(program, name)
+		if (loc < 0) {
+			throw 'attribute "' + name + '" not found'
+		}
+		program.attribs[name] = loc
+	}
+}
+
+function cacheLocations(program, attribs, uniforms) {
+	cacheAttribLocations(program, attribs)
+	cacheUniformLocations(program, uniforms)
+}
+
+function compileShader(src, type) {
+	const shader = gl.createShader(type)
+	gl.shaderSource(shader, src)
+	gl.compileShader(shader)
+	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+		throw gl.getShaderInfoLog(shader)
+	}
+	return shader
+}
+
+function linkProgram(vs, fs) {
+	const p = gl.createProgram()
+	gl.attachShader(p, vs)
+	gl.attachShader(p, fs)
+	gl.linkProgram(p)
+	if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+		throw gl.getProgramInfoLog(p)
+	}
+	return p
+}
+
+function buildProgram(vertexSource, fragmentSource) {
+	return linkProgram(
+		compileShader(vertexSource, gl.VERTEX_SHADER),
+		compileShader(fragmentSource, gl.FRAGMENT_SHADER))
+}
+
+function createTexture() {
+	const texture = gl.createTexture()
+	gl.bindTexture(gl.TEXTURE_2D, texture)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+	return texture
+}
+
+function createFrameBuffer(w, h) {
+	const rb = gl.createRenderbuffer()
+	gl.bindRenderbuffer(gl.RENDERBUFFER, rb)
+	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h)
+
+	const tx = createTexture()
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
+		gl.UNSIGNED_BYTE, null)
+
+	const fb = gl.createFramebuffer()
+	gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+		gl.TEXTURE_2D, tx, 0)
+	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
+		gl.RENDERBUFFER, rb)
+
+	gl.bindTexture(gl.TEXTURE_2D, null)
+	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
+	return [tx, fb]
+}
+
+function createScreenBuffer() {
+	const buffer = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+	gl.bufferData(gl.ARRAY_BUFFER,
+		// vertex and UV coordinates
+		new FA([
+			-1, 1, 1, 1,
+			-1, -1, 1, 0,
+			1, 1, 0, 1,
+			1, -1, 0, 0
+		]),
+		gl.STATIC_DRAW)
+	return buffer
+}
+
 function initFrame(w, h, buffer) {
 	gl.bindFramebuffer(gl.FRAMEBUFFER, buffer)
 	gl.viewport(0, 0, w, h)
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 }
+
+//////////////////////////////////////////////////////////////////////// MODELS
+
+function createModel(vertices, indicies, uvs) {
+	makeVerticesUnique(vertices, indicies, uvs)
+
+	const ncoordinates = vertices.length,
+		vec2elements = (ncoordinates / 3) << 1,
+		model = {count: indicies.length}
+
+	uvs = uvs || new FA(vec2elements)
+
+	const buffer = [],
+		normals = calculateNormals(vertices, indicies)
+	for (let v = 0, n = 0, p = 0; v < ncoordinates;) {
+		buffer.push(vertices[v++])
+		buffer.push(vertices[v++])
+		buffer.push(vertices[v++])
+		buffer.push(normals[n++])
+		buffer.push(normals[n++])
+		buffer.push(normals[n++])
+		buffer.push(uvs[p++])
+		buffer.push(uvs[p++])
+	}
+
+	model.buffer = gl.createBuffer()
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
+	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
+
+	model.indicies = gl.createBuffer()
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicies),
+		gl.STATIC_DRAW)
+
+	return model
+}
+
+function createGround() {
+	return createModel([
+		-1,0,1,
+		1,0,1,
+		-1,0,-1,
+		1,0,-1
+	],[
+		0,1,3,
+		0,3,2
+	],[
+		0,1,
+		1,1,
+		0,0,
+		1,0
+	])
+}
+
+function createRock() {
+	return createModel([
+		0,-.51,.02,
+		.38,-.13,.31,
+		-.18,-.28,.52,
+		-.58,-.29,0,
+		-.21,-.13,-.57,
+		.48,-.14,-.34,
+		.07,.32,.39,
+		-.46,.29,.30,
+		-.39,.29,-.12,
+		.08,.26,-.31,
+		.33,.37,.04,
+		-.18,.54,-.08
+	],[
+		0,1,2,
+		1,0,5,
+		0,2,3,
+		0,3,4,
+		0,4,5,
+		1,5,10,
+		2,1,6,
+		3,2,7,
+		4,3,8,
+		5,4,9,
+		1,10,6,
+		2,6,7,
+		3,7,8,
+		4,8,9,
+		5,9,10,
+		6,10,11,
+		7,6,11,
+		8,7,11,
+		9,8,11,
+		10,9,11
+	])
+}
+
+function createDress() {
+	return createModel([
+		-.40,.59,.20,
+		-.32,1.48,.14,
+		-.40,.57,-.18,
+		-.32,1.46,-.15,
+		.41,.59,.17,
+		.37,1.00,.15,
+		.38,.61,-.16,
+		.34,1.02,-.15,
+		-.02,.50,-.22,
+		-.20,1.52,-.18,
+		-.01,.51,.24,
+		-.18,1.52,.17
+	],[
+		0,3,2,
+		8,7,6,
+		6,5,4,
+		11,0,10,
+		6,10,8,
+		9,1,11,
+		7,11,5,
+		8,0,2,
+		5,10,4,
+		3,8,2,
+		0,1,3,
+		8,9,7,
+		6,7,5,
+		11,1,0,
+		6,4,10,
+		9,3,1,
+		7,9,11,
+		8,10,0,
+		5,11,10,
+		3,9,8
+	])
+}
+
+function createHead() {
+	return createModel([
+		.18,1.57,.24,
+		.21,2.03,-.22,
+		.15,2.13,.04,
+		-.19,1.57,.24,
+		-.19,2.03,-.22,
+		-.15,2.13,.04,
+		-.11,1.61,-.16,
+		.11,1.61,-.16,
+		.11,1.50,.06,
+		-.11,1.50,.06,
+		-.04,1.50,-.02,
+		.04,1.50,-.02,
+		.38,1.42,.13,
+		-.38,1.42,.13,
+		-.42,1.42,-.12,
+		.42,1.42,-.12,
+		.28,.82,.00,
+		-.28,.82,.00,
+		-.00,1.76,.34,
+		0,2.17,.04,
+		-.00,1.57,.28,
+		.00,2.08,-.25,
+		0,1.61,-.16,
+		0,1.50,.06,
+		0,1.50,-.02,
+		0,1.42,.13,
+		0,1.42,-.12,
+		0,.82,0
+	],[
+		18,5,3,
+		3,20,18,
+		1,2,0,
+		0,7,1,
+		18,20,0,
+		2,21,19,
+		1,22,21,
+		22,11,24,
+		3,4,6,
+		11,26,24,
+		6,9,3,
+		7,8,11,
+		3,23,20,
+		26,16,27,
+		9,25,23,
+		9,14,13,
+		8,15,11,
+		25,17,27,
+		14,17,13,
+		12,16,15,
+		25,16,12,
+		8,25,12,
+		26,17,14,
+		0,23,8,
+		10,26,14,
+		22,10,6,
+		4,22,6,
+		5,21,4,
+		2,18,0,
+		3,5,4,
+		18,19,5,
+		2,1,21,
+		1,7,22,
+		22,7,11,
+		11,15,26,
+		6,10,9,
+		7,0,8,
+		3,9,23,
+		26,15,16,
+		9,13,25,
+		9,10,14,
+		8,12,15,
+		25,13,17,
+		25,27,16,
+		8,23,25,
+		26,27,17,
+		0,20,23,
+		10,24,26,
+		22,24,10,
+		4,21,22,
+		5,19,21,
+		2,19,18
+	])
+}
+
+function createLeg() {
+	return createModel([
+		.10,.12,-.11,
+		.14,.68,-.14,
+		.10,.12,.05,
+		.14,.68,.08,
+		-.10,.12,-.11,
+		-.14,.68,-.14,
+		-.10,.12,.05,
+		-.14,.68,.08,
+		.11,-.00,-.11,
+		.11,-.00,.05,
+		-.11,-.00,-.11,
+		-.11,-.00,.05,
+		.11,-.00,.18,
+		-.11,-.00,.18,
+	],[
+		1,2,0,
+		2,7,6,
+		7,4,6,
+		5,0,4,
+		2,11,9,
+		3,5,7,
+		11,8,9,
+		2,8,0,
+		6,10,11,
+		0,10,4,
+		12,11,9,
+		9,2,12,
+		11,13,6,
+		12,6,13,
+		1,3,2,
+		2,3,7,
+		7,5,4,
+		5,1,0,
+		2,6,11,
+		3,1,5,
+		11,10,8,
+		2,9,8,
+		6,4,10,
+		0,8,10,
+		12,13,11,
+		12,2,6
+	])
+}
+
+function createArm() {
+	return createModel([
+		.06,.53,-.06,
+		.09,1.38,-.09,
+		.06,.53,.06,
+		.09,1.38,.09,
+		-.06,.53,-.06,
+		-.09,1.38,-.09,
+		-.06,.53,.06,
+		-.09,1.38,.09
+	],[
+		1,2,0,
+		3,6,2,
+		7,4,6,
+		5,0,4,
+		6,0,2,
+		3,5,7,
+		1,3,2,
+		3,7,6,
+		7,5,4,
+		5,1,0,
+		6,4,0,
+		3,1,5
+	])
+}
+
+function createClub() {
+	return createModel([
+		.01,-.05,-.50,
+		.06,.01,-.51,
+		.03,-.13,.48,
+		.13,.03,.52,
+		-.06,-.01,-.51,
+		-.01,.05,-.52,
+		-.13,-.03,.50,
+		-.03,.13,.54
+	],[
+		0,3,2,
+		2,7,6,
+		7,4,6,
+		5,0,4,
+		2,4,0,
+		7,1,5,
+		0,1,3,
+		2,3,7,
+		7,5,4,
+		5,1,0,
+		2,6,4,
+		7,3,1
+	])
+}
+
+function createMarker() {
+	return createModel([
+		0,0,-1,
+		-.70,0,-.70,
+		-1,0,0,
+		-.70,0,.70,
+		0,0,1,
+		.70,0,.70,
+		1,0,0,
+		.70,0,-.70,
+		.57,0,-.57,
+		.81,0,0,
+		.57,0,.57,
+		0,0,.81,
+		-.57,0,.57,
+		-.81,0,0,
+		-.57,0,-.57,
+		0,0,-.81,
+		0,.10,-1,
+		-.70,.10,-.70,
+		-1,.10,0,
+		-.70,.10,.70,
+		0,.10,1,
+		.70,.10,.70,
+		1,.10,0,
+		.70,.10,-.70,
+		.57,.10,-.57,
+		.81,.10,0,
+		.57,.10,.57,
+		0,.10,.81,
+		-.57,.10,.57,
+		-.81,.10,0,
+		-.57,.10,-.57,
+		0,.10,-.81,
+	],[
+		11,4,3,
+		10,5,4,
+		8,7,6,
+		1,0,15,
+		9,6,5,
+		13,2,1,
+		12,3,2,
+		15,0,7,
+		19,20,27,
+		20,21,26,
+		22,23,24,
+		17,30,31,
+		22,25,26,
+		17,18,29,
+		18,19,28,
+		23,16,31,
+		9,10,26,
+		1,2,18,
+		2,3,19,
+		15,8,24,
+		3,4,20,
+		4,5,21,
+		8,9,25,
+		5,6,22,
+		14,15,31,
+		10,11,27,
+		6,7,23,
+		11,12,28,
+		12,13,29,
+		7,0,16,
+		13,14,30,
+		0,1,17,
+		11,3,12,
+		10,4,11,
+		8,6,9,
+		1,15,14,
+		9,5,10,
+		13,1,14,
+		12,2,13,
+		15,7,8,
+		19,27,28,
+		20,26,27,
+		22,24,25,
+		17,31,16,
+		22,26,21,
+		17,29,30,
+		18,28,29,
+		23,31,24,
+		9,26,25,
+		1,18,17,
+		2,19,18,
+		15,24,31,
+		3,20,19,
+		4,21,20,
+		8,25,24,
+		5,22,21,
+		14,31,30,
+		10,27,26,
+		6,23,22,
+		11,28,27,
+		12,29,28,
+		7,16,23,
+		13,30,29,
+		0,17,16,
+	])
+}
+
+function createCross() {
+	return createModel([
+		0,0,.14,
+		.14,0,0,
+		-.14,0,0,
+		0,0,-.14,
+		.43,0,-.28,
+		.28,0,-.43,
+		-.28,0,.43,
+		-.43,0,.28,
+		.28,0,.43,
+		.43,0,.28,
+		-.43,0,-.28,
+		-.28,0,-.43,
+		0,.10,.14,
+		.14,.10,0,
+		-.14,.10,0,
+		0,.10,-.14,
+		.43,.10,-.28,
+		.28,.10,-.43,
+		-.28,.10,.43,
+		-.43,.10,.28,
+		.28,.10,.43,
+		.43,.10,.28,
+		-.43,.10,-.28,
+		-.28,.10,-.43
+	],[
+		2,1,0,
+		5,1,3,
+		6,2,0,
+		9,0,1,
+		10,3,2,
+		13,14,12,
+		13,17,15,
+		14,18,12,
+		12,21,13,
+		15,22,14,
+		9,20,8,
+		6,19,7,
+		11,15,3,
+		5,16,4,
+		8,12,0,
+		7,14,2,
+		2,22,10,
+		4,13,1,
+		1,21,9,
+		0,18,6,
+		3,17,5,
+		10,23,11,
+		13,15,14,
+		13,16,17,
+		14,19,18,
+		12,20,21,
+		15,23,22,
+		2,3,1,
+		5,4,1,
+		6,7,2,
+		9,8,0,
+		10,11,3,
+		9,21,20,
+		6,18,19,
+		11,23,15,
+		5,17,16,
+		8,20,12,
+		7,19,14,
+		2,14,22,
+		4,16,13,
+		1,13,21,
+		0,12,18,
+		3,15,17,
+		10,22,23
+	])
+}
+
+////////////////////////////////////////////////////////////////////// PROGRAMS
+
+let shadowProgram,
+	groundProgram,
+	entityProgram,
+	screenProgram
+
+function createPrograms() {
+	const precision = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif`, lightVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+
+uniform mat4 mats[5];
+uniform vec3 lightDirection;
+
+varying float bias;
+
+void main() {
+	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
+		lightDirection));
+	bias = .001 * intensity;
+	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
+}`, lightFragmentShader = `${precision}
+varying float bias;
+
+void main() {
+	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
+	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
+	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
+	comp -= comp.xxyz * bitMask;
+	gl_FragColor = comp;
+}`, entityVertexShader = `${precision}
+attribute vec3 vertex;
+attribute vec3 normal;
+
+uniform mat4 mats[5];
+uniform vec3 lightDirection;
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+#ifdef GROUND
+attribute vec2 uv;
+varying vec2 st;
+#endif
+
+const mat4 texUnitConverter = mat4(
+	.5, .0, .0, .0,
+	.0, .5, .0, .0,
+	.0, .0, .5, .0,
+	.5, .5, .5, 1.
+);
+
+void main() {
+	vec4 v = vec4(vertex, 1.);
+	gl_Position = mats[0] * mats[1] * v;
+	z = gl_Position.z;
+	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
+		lightDirection));
+	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
+#ifdef GROUND
+	st = uv;
+#endif
+}`, entityFragmentShader = `${precision}
+uniform float far;
+uniform vec4 sky;
+uniform vec4 color;
+uniform sampler2D shadowTexture;
+
+varying float intensity;
+varying float z;
+varying vec4 shadowPos;
+
+#ifdef GROUND
+uniform sampler2D groundTexture;
+uniform float range;
+uniform vec2 playerPosition;
+uniform vec3 blockPositions[${blockablesLength}];
+varying vec2 st;
+#endif
+
+const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
+float decodeFloat(vec4 c) {
+	return dot(c, bitShift);
+}
+
+float light() {
+	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
+	float res = step(.5, intensity);
+	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
+}
+
+#ifdef GROUND
+float unblocked(vec2 center, float dist) {
+	vec2 p = st - center;
+	float a = atan(p.y, p.x);
+	float f = 1.;
+	for (int i = 0; i < ${blockablesLength}; ++i) {
+		p = blockPositions[i].xy;
+		float beyond = step(dist, distance(center, p));
+		p -= center;
+		float dir = step(.1, abs(atan(p.y, p.x) - a));
+		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
+	}
+	return f;
+}
+#endif
+
+void main() {
+	float light = light();
+	float fog = z / far;
+	vec4 c = color;
+#ifdef GROUND
+	float f = step(.9, texture2D(groundTexture, st).r);
+	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
+
+	float d = distance(playerPosition, st);
+	f = step(d, range) * unblocked(playerPosition, d);
+	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
+
+	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
+		vec3 bp = blockPositions[i];
+		vec2 p = bp.xy * min(bp.z, 1.);
+		d = distance(p, st);
+		f = step(d, range) * unblocked(p, d);
+		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
+	}
+#endif
+	gl_FragColor = vec4((1. - fog) * c.rgb * light + fog * sky.rgb, c.a);
+}`, screenVertexShader = `${precision}
+attribute vec2 vertex;
+attribute vec2 uv;
+
+varying vec2 st;
+
+void main() {
+	gl_Position = vec4(vertex, 0., 1.);
+	st = uv;
+}`, screenFragmentShader = `${precision}
+varying vec2 st;
+
+uniform sampler2D offscreenTexture;
+
+void main() {
+	gl_FragColor = texture2D(offscreenTexture, st);
+}`
+
+	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
+	cacheLocations(shadowProgram,
+		['vertex', 'normal'],
+		['mats[0]', 'lightDirection'])
+
+	const groundDefine = '#define GROUND 1\n'
+	groundProgram = buildProgram(
+		groundDefine + entityVertexShader,
+		groundDefine + entityFragmentShader)
+	cacheLocations(groundProgram,
+		['vertex', 'normal', 'uv'],
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
+			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
+
+	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
+	cacheLocations(entityProgram,
+		['vertex', 'normal'],
+		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
+
+	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
+	cacheLocations(screenProgram,
+		['vertex', 'uv'],
+		['offscreenTexture'])
+}
+
+////////////////////////////////////////////////////////////////////////// GAME
+
+const D = document,
+	W = window,
+	FA = Float32Array,
+	idMat = new FA([
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1]),
+	cacheMat = new FA(16),
+	viewMat = new FA(16),
+	lightViewMat = new FA(16),
+	mats = new FA(80),
+	projMat = new FA(mats.buffer, 0, 16),
+	modelViewMat = new FA(mats.buffer, 64, 16),
+	normalMat = new FA(mats.buffer, 128, 16),
+	lightProjMat = new FA(mats.buffer, 192, 16),
+	lightModelViewMat = new FA(mats.buffer, 256, 16),
+	lightDirection = [0, 0, 0],
+	playerLength = 5,
+	enemyLength = 7,
+	playerPosition = [-1, -1],
+	skyColor = [.06, .06, .06, 1],
+	camPos = [0, 13, 11],
+	pointerSpot = [0, 0, 0],
+	pointersX = [],
+	pointersY = [],
+	drag = {},
+	horizon = 50,
+	groundSize = 50,
+	groundFactor = .5 / groundSize,
+	attackRange = 1,
+	offscreenSize = 256,
+	shadowTextureSize = 1024
+
+let shadowBuffer,
+	shadowTexture,
+	offscreenBuffer,
+	offscreenTexture,
+	groundTexture,
+	screenBuffer,
+	screenWidth,
+	screenHeight,
+	pointersLength,
+	entitiesLength,
+	entities = [],
+	blockablesLength,
+	blockables = [],
+	blockPositions,
+	ground,
+	enemyTurn,
+	moveMade,
+	cross,
+	marker,
+	selected,
+	gameOver,
+	now
+
+M.PI2 = M.PI2 || M.PI / 2
+M.TAU = M.TAU || M.PI * 2
 
 function drawScreen() {
 	initFrame(screenWidth, screenHeight)
@@ -876,6 +1716,26 @@ function setPointer(event, down) {
 	event.stopPropagation()
 }
 
+function clamp(v, min, max) {
+	return M.max(min, M.min(max, v))
+}
+
+function lookAt(x, z) {
+	x = clamp(x, -10, 10)
+	z = clamp(z, -10, 10)
+
+	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
+	rotate(viewMat, viewMat, -.9, 1, 0, 0)
+	invert(viewMat, viewMat)
+
+	translate(lightViewMat, idMat, x, 35, z)
+	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
+	invert(lightViewMat, lightViewMat)
+	lightDirection[0] = lightViewMat[2]
+	lightDirection[1] = lightViewMat[6]
+	lightDirection[2] = lightViewMat[10]
+}
+
 function dragCamera() {
 	const dx = pointersX[0] - drag.x,
 		dy = pointersY[0] - drag.y,
@@ -944,807 +1804,6 @@ function resize() {
 	gl.canvas.height = screenHeight = gl.canvas.clientHeight
 	setPerspective(projMat, M.PI * .125, screenWidth / screenHeight, .1,
 		horizon)
-}
-
-function clamp(v, min, max) {
-	return M.max(min, M.min(max, v))
-}
-
-function lookAt(x, z) {
-	x = clamp(x, -10, 10)
-	z = clamp(z, -10, 10)
-
-	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
-	rotate(viewMat, viewMat, -.9, 1, 0, 0)
-	invert(viewMat, viewMat)
-
-	translate(lightViewMat, idMat, x, 35, z)
-	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
-	invert(lightViewMat, lightViewMat)
-	lightDirection[0] = lightViewMat[2]
-	lightDirection[1] = lightViewMat[6]
-	lightDirection[2] = lightViewMat[10]
-}
-
-function cacheUniformLocations(program, uniforms) {
-	if (program.uniforms === undefined) {
-		program.uniforms = {}
-	}
-	for (let i = 0, l = uniforms.length; i < l; ++i) {
-		const name = uniforms[i],
-			loc = gl.getUniformLocation(program, name)
-		if (!loc) {
-			throw 'uniform "' + name + '" not found'
-		}
-		program.uniforms[name] = loc
-	}
-}
-
-function cacheAttribLocations(program, attribs) {
-	if (program.attribs === undefined) {
-		program.attribs = {}
-	}
-	for (let i = 0, l = attribs.length; i < l; ++i) {
-		const name = attribs[i],
-			loc = gl.getAttribLocation(program, name)
-		if (loc < 0) {
-			throw 'attribute "' + name + '" not found'
-		}
-		program.attribs[name] = loc
-	}
-}
-
-function cacheLocations(program, attribs, uniforms) {
-	cacheAttribLocations(program, attribs)
-	cacheUniformLocations(program, uniforms)
-}
-
-function compileShader(src, type) {
-	const shader = gl.createShader(type)
-	gl.shaderSource(shader, src)
-	gl.compileShader(shader)
-	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		throw gl.getShaderInfoLog(shader)
-	}
-	return shader
-}
-
-function linkProgram(vs, fs) {
-	const p = gl.createProgram()
-	gl.attachShader(p, vs)
-	gl.attachShader(p, fs)
-	gl.linkProgram(p)
-	if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-		throw gl.getProgramInfoLog(p)
-	}
-	return p
-}
-
-function buildProgram(vertexSource, fragmentSource) {
-	return linkProgram(
-		compileShader(vertexSource, gl.VERTEX_SHADER),
-		compileShader(fragmentSource, gl.FRAGMENT_SHADER))
-}
-
-function createPrograms() {
-	const precision = `
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif`, lightVertexShader = `${precision}
-attribute vec3 vertex;
-attribute vec3 normal;
-
-uniform mat4 mats[5];
-uniform vec3 lightDirection;
-
-varying float bias;
-
-void main() {
-	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
-		lightDirection));
-	bias = .001 * intensity;
-	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
-}`, lightFragmentShader = `${precision}
-varying float bias;
-
-void main() {
-	const vec4 bitShift = vec4(16777216., 65536., 256., 1.);
-	const vec4 bitMask = vec4(0., 1. / 256., 1. / 256., 1. / 256.);
-	vec4 comp = fract((gl_FragCoord.z + bias) * bitShift);
-	comp -= comp.xxyz * bitMask;
-	gl_FragColor = comp;
-}`, entityVertexShader = `${precision}
-attribute vec3 vertex;
-attribute vec3 normal;
-
-uniform mat4 mats[5];
-uniform vec3 lightDirection;
-
-varying float intensity;
-varying float z;
-varying vec4 shadowPos;
-
-#ifdef GROUND
-attribute vec2 uv;
-varying vec2 st;
-#endif
-
-const mat4 texUnitConverter = mat4(
-	.5, .0, .0, .0,
-	.0, .5, .0, .0,
-	.0, .0, .5, .0,
-	.5, .5, .5, 1.
-);
-
-void main() {
-	vec4 v = vec4(vertex, 1.);
-	gl_Position = mats[0] * mats[1] * v;
-	z = gl_Position.z;
-	intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
-		lightDirection));
-	shadowPos = texUnitConverter * mats[3] * mats[4] * v;
-#ifdef GROUND
-	st = uv;
-#endif
-}`, entityFragmentShader = `${precision}
-uniform float far;
-uniform vec4 sky;
-uniform vec4 color;
-uniform sampler2D shadowTexture;
-
-varying float intensity;
-varying float z;
-varying vec4 shadowPos;
-
-#ifdef GROUND
-uniform sampler2D groundTexture;
-uniform float range;
-uniform vec2 playerPosition;
-uniform vec3 blockPositions[${blockablesLength}];
-varying vec2 st;
-#endif
-
-const vec4 bitShift = vec4(1. / 16777216., 1. / 65536., 1. / 256., 1.);
-float decodeFloat(vec4 c) {
-	return dot(c, bitShift);
-}
-
-float light() {
-	float depth = decodeFloat(texture2D(shadowTexture, shadowPos.xy));
-	float res = step(.5, intensity);
-	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
-}
-
-#ifdef GROUND
-float unblocked(vec2 center, float dist) {
-	vec2 p = st - center;
-	float a = atan(p.y, p.x);
-	float f = 1.;
-	for (int i = 0; i < ${blockablesLength}; ++i) {
-		p = blockPositions[i].xy;
-		float beyond = step(dist, distance(center, p));
-		p -= center;
-		float dir = step(.1, abs(atan(p.y, p.x) - a));
-		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
-	}
-	return f;
-}
-#endif
-
-void main() {
-	float light = light();
-	float fog = z / far;
-	vec4 c = color;
-#ifdef GROUND
-	float f = step(.9, texture2D(groundTexture, st).r);
-	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
-
-	float d = distance(playerPosition, st);
-	f = step(d, range) * unblocked(playerPosition, d);
-	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
-
-	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
-		vec3 bp = blockPositions[i];
-		vec2 p = bp.xy * min(bp.z, 1.);
-		d = distance(p, st);
-		f = step(d, range) * unblocked(p, d);
-		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
-	}
-#endif
-	gl_FragColor = vec4((1. - fog) * c.rgb * light + fog * sky.rgb, c.a);
-}`, screenVertexShader = `${precision}
-attribute vec2 vertex;
-attribute vec2 uv;
-
-varying vec2 st;
-
-void main() {
-	gl_Position = vec4(vertex, 0., 1.);
-	st = uv;
-}`, screenFragmentShader = `${precision}
-varying vec2 st;
-
-uniform sampler2D offscreenTexture;
-
-void main() {
-	gl_FragColor = texture2D(offscreenTexture, st);
-}`
-
-	shadowProgram = buildProgram(lightVertexShader, lightFragmentShader)
-	cacheLocations(shadowProgram,
-		['vertex', 'normal'],
-		['mats[0]', 'lightDirection'])
-
-	const groundDefine = '#define GROUND 1\n'
-	groundProgram = buildProgram(
-		groundDefine + entityVertexShader,
-		groundDefine + entityFragmentShader)
-	cacheLocations(groundProgram,
-		['vertex', 'normal', 'uv'],
-		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
-
-	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
-	cacheLocations(entityProgram,
-		['vertex', 'normal'],
-		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture'])
-
-	screenProgram = buildProgram(screenVertexShader, screenFragmentShader)
-	cacheLocations(screenProgram,
-		['vertex', 'uv'],
-		['offscreenTexture'])
-}
-
-function calculateNormals(vertices, indicies) {
-	const normals = []
-
-	for (let i = 0, l = indicies.length; i < l;) {
-		const a = indicies[i++] * 3,
-			b = indicies[i++] * 3,
-			c = indicies[i++] * 3,
-			x1 = vertices[a],
-			y1 = vertices[a + 1],
-			z1 = vertices[a + 2],
-			x2 = vertices[b],
-			y2 = vertices[b + 1],
-			z2 = vertices[b + 2],
-			x3 = vertices[c],
-			y3 = vertices[c + 1],
-			z3 = vertices[c + 2],
-			ux = x2 - x1,
-			uy = y2 - y1,
-			uz = z2 - z1,
-			vx = x3 - x1,
-			vy = y3 - y1,
-			vz = z3 - z1,
-			nx = uy * vz - uz * vy,
-			ny = uz * vx - ux * vz,
-			nz = ux * vy - uy * vx
-
-		normals[a] = nx
-		normals[a + 1] = ny
-		normals[a + 2] = nz
-
-		normals[b] = nx
-		normals[b + 1] = ny
-		normals[b + 2] = nz
-
-		normals[c] = nx
-		normals[c + 1] = ny
-		normals[c + 2] = nz
-	}
-
-	return normals
-}
-
-function makeVerticesUnique(vertices, indicies, uvs) {
-	const used = []
-	for (let i = 0, l = indicies.length; i < l; ++i) {
-		const idx = indicies[i]
-		if (used.includes(idx)) {
-			let vo = idx * 3
-			indicies[i] = vertices.length / 3
-			vertices.push(vertices[vo++])
-			vertices.push(vertices[vo++])
-			vertices.push(vertices[vo])
-			if (uvs) {
-				let o = idx << 1
-				uvs.push(uvs[o++])
-				uvs.push(uvs[o])
-			}
-		} else {
-			used.push(idx)
-		}
-	}
-}
-
-function createModel(vertices, indicies, uvs) {
-	makeVerticesUnique(vertices, indicies, uvs)
-
-	const ncoordinates = vertices.length,
-		vec2elements = (ncoordinates / 3) << 1,
-		model = {count: indicies.length}
-
-	uvs = uvs || new FA(vec2elements)
-
-	const buffer = [],
-		normals = calculateNormals(vertices, indicies)
-	for (let v = 0, n = 0, p = 0; v < ncoordinates;) {
-		buffer.push(vertices[v++])
-		buffer.push(vertices[v++])
-		buffer.push(vertices[v++])
-		buffer.push(normals[n++])
-		buffer.push(normals[n++])
-		buffer.push(normals[n++])
-		buffer.push(uvs[p++])
-		buffer.push(uvs[p++])
-	}
-
-	model.buffer = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
-
-	model.indicies = gl.createBuffer()
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
-	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indicies),
-		gl.STATIC_DRAW)
-
-	return model
-}
-
-function createGround() {
-	return createModel([
-		-1,0,1,
-		1,0,1,
-		-1,0,-1,
-		1,0,-1
-	],[
-		0,1,3,
-		0,3,2
-	],[
-		0,1,
-		1,1,
-		0,0,
-		1,0
-	])
-}
-
-function createRock() {
-	return createModel([
-		0,-.51,.02,
-		.38,-.13,.31,
-		-.18,-.28,.52,
-		-.58,-.29,0,
-		-.21,-.13,-.57,
-		.48,-.14,-.34,
-		.07,.32,.39,
-		-.46,.29,.30,
-		-.39,.29,-.12,
-		.08,.26,-.31,
-		.33,.37,.04,
-		-.18,.54,-.08
-	],[
-		0,1,2,
-		1,0,5,
-		0,2,3,
-		0,3,4,
-		0,4,5,
-		1,5,10,
-		2,1,6,
-		3,2,7,
-		4,3,8,
-		5,4,9,
-		1,10,6,
-		2,6,7,
-		3,7,8,
-		4,8,9,
-		5,9,10,
-		6,10,11,
-		7,6,11,
-		8,7,11,
-		9,8,11,
-		10,9,11
-	])
-}
-
-function createDress() {
-	return createModel([
-		-.40,.59,.20,
-		-.32,1.48,.14,
-		-.40,.57,-.18,
-		-.32,1.46,-.15,
-		.41,.59,.17,
-		.37,1.00,.15,
-		.38,.61,-.16,
-		.34,1.02,-.15,
-		-.02,.50,-.22,
-		-.20,1.52,-.18,
-		-.01,.51,.24,
-		-.18,1.52,.17
-	],[
-		0,3,2,
-		8,7,6,
-		6,5,4,
-		11,0,10,
-		6,10,8,
-		9,1,11,
-		7,11,5,
-		8,0,2,
-		5,10,4,
-		3,8,2,
-		0,1,3,
-		8,9,7,
-		6,7,5,
-		11,1,0,
-		6,4,10,
-		9,3,1,
-		7,9,11,
-		8,10,0,
-		5,11,10,
-		3,9,8
-	])
-}
-
-function createHead() {
-	return createModel([
-		.18,1.57,.24,
-		.21,2.03,-.22,
-		.15,2.13,.04,
-		-.19,1.57,.24,
-		-.19,2.03,-.22,
-		-.15,2.13,.04,
-		-.11,1.61,-.16,
-		.11,1.61,-.16,
-		.11,1.50,.06,
-		-.11,1.50,.06,
-		-.04,1.50,-.02,
-		.04,1.50,-.02,
-		.38,1.42,.13,
-		-.38,1.42,.13,
-		-.42,1.42,-.12,
-		.42,1.42,-.12,
-		.28,.82,.00,
-		-.28,.82,.00,
-		-.00,1.76,.34,
-		0,2.17,.04,
-		-.00,1.57,.28,
-		.00,2.08,-.25,
-		0,1.61,-.16,
-		0,1.50,.06,
-		0,1.50,-.02,
-		0,1.42,.13,
-		0,1.42,-.12,
-		0,.82,0
-	],[
-		18,5,3,
-		3,20,18,
-		1,2,0,
-		0,7,1,
-		18,20,0,
-		2,21,19,
-		1,22,21,
-		22,11,24,
-		3,4,6,
-		11,26,24,
-		6,9,3,
-		7,8,11,
-		3,23,20,
-		26,16,27,
-		9,25,23,
-		9,14,13,
-		8,15,11,
-		25,17,27,
-		14,17,13,
-		12,16,15,
-		25,16,12,
-		8,25,12,
-		26,17,14,
-		0,23,8,
-		10,26,14,
-		22,10,6,
-		4,22,6,
-		5,21,4,
-		2,18,0,
-		3,5,4,
-		18,19,5,
-		2,1,21,
-		1,7,22,
-		22,7,11,
-		11,15,26,
-		6,10,9,
-		7,0,8,
-		3,9,23,
-		26,15,16,
-		9,13,25,
-		9,10,14,
-		8,12,15,
-		25,13,17,
-		25,27,16,
-		8,23,25,
-		26,27,17,
-		0,20,23,
-		10,24,26,
-		22,24,10,
-		4,21,22,
-		5,19,21,
-		2,19,18
-	])
-}
-
-function createLeg() {
-	return createModel([
-		.10,.12,-.11,
-		.14,.68,-.14,
-		.10,.12,.05,
-		.14,.68,.08,
-		-.10,.12,-.11,
-		-.14,.68,-.14,
-		-.10,.12,.05,
-		-.14,.68,.08,
-		.11,-.00,-.11,
-		.11,-.00,.05,
-		-.11,-.00,-.11,
-		-.11,-.00,.05,
-		.11,-.00,.18,
-		-.11,-.00,.18,
-	],[
-		1,2,0,
-		2,7,6,
-		7,4,6,
-		5,0,4,
-		2,11,9,
-		3,5,7,
-		11,8,9,
-		2,8,0,
-		6,10,11,
-		0,10,4,
-		12,11,9,
-		9,2,12,
-		11,13,6,
-		12,6,13,
-		1,3,2,
-		2,3,7,
-		7,5,4,
-		5,1,0,
-		2,6,11,
-		3,1,5,
-		11,10,8,
-		2,9,8,
-		6,4,10,
-		0,8,10,
-		12,13,11,
-		12,2,6
-	])
-}
-
-function createArm() {
-	return createModel([
-		.06,.53,-.06,
-		.09,1.38,-.09,
-		.06,.53,.06,
-		.09,1.38,.09,
-		-.06,.53,-.06,
-		-.09,1.38,-.09,
-		-.06,.53,.06,
-		-.09,1.38,.09
-	],[
-		1,2,0,
-		3,6,2,
-		7,4,6,
-		5,0,4,
-		6,0,2,
-		3,5,7,
-		1,3,2,
-		3,7,6,
-		7,5,4,
-		5,1,0,
-		6,4,0,
-		3,1,5
-	])
-}
-
-function createClub() {
-	return createModel([
-		.01,-.05,-.50,
-		.06,.01,-.51,
-		.03,-.13,.48,
-		.13,.03,.52,
-		-.06,-.01,-.51,
-		-.01,.05,-.52,
-		-.13,-.03,.50,
-		-.03,.13,.54
-	],[
-		0,3,2,
-		2,7,6,
-		7,4,6,
-		5,0,4,
-		2,4,0,
-		7,1,5,
-		0,1,3,
-		2,3,7,
-		7,5,4,
-		5,1,0,
-		2,6,4,
-		7,3,1
-	])
-}
-
-function createMarker() {
-	return createModel([
-		0,0,-1,
-		-.70,0,-.70,
-		-1,0,0,
-		-.70,0,.70,
-		0,0,1,
-		.70,0,.70,
-		1,0,0,
-		.70,0,-.70,
-		.57,0,-.57,
-		.81,0,0,
-		.57,0,.57,
-		0,0,.81,
-		-.57,0,.57,
-		-.81,0,0,
-		-.57,0,-.57,
-		0,0,-.81,
-		0,.10,-1,
-		-.70,.10,-.70,
-		-1,.10,0,
-		-.70,.10,.70,
-		0,.10,1,
-		.70,.10,.70,
-		1,.10,0,
-		.70,.10,-.70,
-		.57,.10,-.57,
-		.81,.10,0,
-		.57,.10,.57,
-		0,.10,.81,
-		-.57,.10,.57,
-		-.81,.10,0,
-		-.57,.10,-.57,
-		0,.10,-.81,
-	],[
-		11,4,3,
-		10,5,4,
-		8,7,6,
-		1,0,15,
-		9,6,5,
-		13,2,1,
-		12,3,2,
-		15,0,7,
-		19,20,27,
-		20,21,26,
-		22,23,24,
-		17,30,31,
-		22,25,26,
-		17,18,29,
-		18,19,28,
-		23,16,31,
-		9,10,26,
-		1,2,18,
-		2,3,19,
-		15,8,24,
-		3,4,20,
-		4,5,21,
-		8,9,25,
-		5,6,22,
-		14,15,31,
-		10,11,27,
-		6,7,23,
-		11,12,28,
-		12,13,29,
-		7,0,16,
-		13,14,30,
-		0,1,17,
-		11,3,12,
-		10,4,11,
-		8,6,9,
-		1,15,14,
-		9,5,10,
-		13,1,14,
-		12,2,13,
-		15,7,8,
-		19,27,28,
-		20,26,27,
-		22,24,25,
-		17,31,16,
-		22,26,21,
-		17,29,30,
-		18,28,29,
-		23,31,24,
-		9,26,25,
-		1,18,17,
-		2,19,18,
-		15,24,31,
-		3,20,19,
-		4,21,20,
-		8,25,24,
-		5,22,21,
-		14,31,30,
-		10,27,26,
-		6,23,22,
-		11,28,27,
-		12,29,28,
-		7,16,23,
-		13,30,29,
-		0,17,16,
-	])
-}
-
-function createCross() {
-	return createModel([
-		0,0,.14,
-		.14,0,0,
-		-.14,0,0,
-		0,0,-.14,
-		.43,0,-.28,
-		.28,0,-.43,
-		-.28,0,.43,
-		-.43,0,.28,
-		.28,0,.43,
-		.43,0,.28,
-		-.43,0,-.28,
-		-.28,0,-.43,
-		0,.10,.14,
-		.14,.10,0,
-		-.14,.10,0,
-		0,.10,-.14,
-		.43,.10,-.28,
-		.28,.10,-.43,
-		-.28,.10,.43,
-		-.43,.10,.28,
-		.28,.10,.43,
-		.43,.10,.28,
-		-.43,.10,-.28,
-		-.28,.10,-.43
-	],[
-		2,1,0,
-		5,1,3,
-		6,2,0,
-		9,0,1,
-		10,3,2,
-		13,14,12,
-		13,17,15,
-		14,18,12,
-		12,21,13,
-		15,22,14,
-		9,20,8,
-		6,19,7,
-		11,15,3,
-		5,16,4,
-		8,12,0,
-		7,14,2,
-		2,22,10,
-		4,13,1,
-		1,21,9,
-		0,18,6,
-		3,17,5,
-		10,23,11,
-		13,15,14,
-		13,16,17,
-		14,19,18,
-		12,20,21,
-		15,23,22,
-		2,3,1,
-		5,4,1,
-		6,7,2,
-		9,8,0,
-		10,11,3,
-		9,21,20,
-		6,18,19,
-		11,23,15,
-		5,17,16,
-		8,20,12,
-		7,19,14,
-		2,14,22,
-		4,16,13,
-		1,13,21,
-		0,12,18,
-		3,15,17,
-		10,22,23
-	])
 }
 
 function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
@@ -1995,40 +2054,6 @@ function createEntities() {
 	createPrograms()
 }
 
-function createTexture() {
-	const texture = gl.createTexture()
-	gl.bindTexture(gl.TEXTURE_2D, texture)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-	return texture
-}
-
-function createFrameBuffer(w, h) {
-	const rb = gl.createRenderbuffer()
-	gl.bindRenderbuffer(gl.RENDERBUFFER, rb)
-	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h)
-
-	const tx = createTexture()
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
-		gl.UNSIGNED_BYTE, null)
-
-	const fb = gl.createFramebuffer()
-	gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
-	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-		gl.TEXTURE_2D, tx, 0)
-	gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-		gl.RENDERBUFFER, rb)
-
-	gl.bindTexture(gl.TEXTURE_2D, null)
-	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
-	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-
-	return {
-		tx: tx,
-		fb: fb
-	}
-}
-
 function createGroundTexture() {
 	const size = 1024,
 		canvas = D.createElement('canvas'),
@@ -2065,40 +2090,23 @@ function createGroundTexture() {
 	gl.bindTexture(gl.TEXTURE_2D, null)
 }
 
-function createScreenBuffer() {
-	screenBuffer = gl.createBuffer()
-	gl.bindBuffer(gl.ARRAY_BUFFER, screenBuffer)
-	gl.bufferData(gl.ARRAY_BUFFER,
-		new FA([
-			-1, 1, 1, 1,
-			-1, -1, 1, 0,
-			1, 1, 0, 1,
-			1, -1, 0, 0
-		]),
-		gl.STATIC_DRAW)
-}
-
-function createOffscreenBuffer() {
-	const buf = createFrameBuffer(offscreenSize, offscreenSize)
-	offscreenTexture = buf.tx
-	offscreenBuffer = buf.fb
-}
-
-function createShadowBuffer() {
-	const buf = createFrameBuffer(shadowTextureSize,
-		shadowTextureSize)
-	shadowTexture = buf.tx
-	shadowBuffer = buf.fb
-}
-
 function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -20, 20, -20, 20, -35, 35)
 
-	createShadowBuffer()
-	createOffscreenBuffer()
-	createScreenBuffer()
+	{
+		const buf = createFrameBuffer(offscreenSize, offscreenSize)
+		offscreenTexture = buf[0]
+		offscreenBuffer = buf[1]
+	}
+	{
+		const buf = createFrameBuffer(shadowTextureSize, shadowTextureSize)
+		shadowTexture = buf[0]
+		shadowBuffer = buf[1]
+	}
+	screenBuffer = createScreenBuffer()
+
 	createGroundTexture()
 	createEntities()
 
