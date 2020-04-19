@@ -1154,6 +1154,7 @@ const D = document,
 	horizon = 50,
 	groundSize = 50,
 	groundFactor = .5 / groundSize,
+	moveBound = 10,
 	attackRange = 1,
 	offscreenSize = 256,
 	shadowTextureSize = 1024
@@ -1173,6 +1174,8 @@ let shadowBuffer,
 	blockables = [],
 	blockPositions,
 	ground,
+	lookX,
+	lookZ,
 	enemyTurn,
 	moveMade,
 	cross,
@@ -1384,6 +1387,25 @@ function getGroundSpot(out, nx, ny) {
 	return rayGround(out, -cacheMat[12], cacheMat[13], cacheMat[14], x, y, z)
 }
 
+function moveToTarget() {
+	moveTo(this, this.targetX, this.targetZ)
+}
+
+function moveViewAtMe() {
+	const em = this.mat,
+		ex = em[12],
+		ez = em[14],
+		dx = ex - lookX,
+		dz = ez - lookZ,
+		d = dx*dx + dz*dz
+	if (d < .01) {
+		this.update = moveToTarget
+	} else {
+		const f = .05 + M.min(.2, 1 / d)
+		lookAt(lookX + dx * f, lookZ + dz * f)
+	}
+}
+
 function setTarget(e, x, z) {
 	const em = e.mat,
 		ex = em[12],
@@ -1497,8 +1519,12 @@ function calculateEnemyTurn() {
 			}
 			const pm = p.mat,
 				px = pm[12],
-				pz = pm[14],
-				dx = px - ex,
+				pz = pm[14]
+			if (M.abs(px) > moveBound || M.abs(pz) > moveBound) {
+				// don't follow targets to the edge of the world ;)
+				continue
+			}
+			const dx = px - ex,
 				dz = pz - ez,
 				d = dx*dx + dz*dz,
 				b = getFirstBlockableFrom(ex, ez, dx, dz, e)
@@ -1515,17 +1541,18 @@ function calculateEnemyTurn() {
 		if (!agent && (agent = getRandomEnemy())) {
 			const am = agent.mat,
 				ax = am[12],
-				az = am[14]
+				az = am[14],
+				half = moveBound / 2
 			let tx, tz, tries = 0
 			do {
-				tx = ax + M.random() * 10 - 5
-				tz = az + M.random() * 10 - 5
+				tx = ax + M.random() * moveBound - half
+				tz = az + M.random() * moveBound - half
 			} while (tries++ < 10 &&
 				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
 					getBlockableNear(tx, tz, 4, agent)))
 			setTarget(agent, tx, tz)
 		}
-		agent.update = moveToTarget
+		agent.update = moveViewAtMe
 	}
 	moveMade = true
 }
@@ -1569,6 +1596,10 @@ function kill(unit) {
 	unit.timeOfDeath = now
 	translate(unit.lockMat, unit.mat, 0, .2, 0)
 	unit.update = unit.die
+}
+
+function setMarker(m) {
+	marker.mat.set(m)
 }
 
 function hit(attacker, victim) {
@@ -1676,18 +1707,13 @@ function moveTo(e, x, z) {
 		}
 		moveMade = true
 		mat.set(cacheMat)
+		if (enemyTurn) {
+			lookAt(cacheMat[12], cacheMat[14])
+		}
 		e.walk()
 	} else {
 		endTurn(e)
 	}
-}
-
-function moveToTarget() {
-	moveTo(this, this.targetX, this.targetZ)
-}
-
-function setMarker(m) {
-	marker.mat.set(m)
 }
 
 function setPointer(event, down) {
@@ -1716,24 +1742,28 @@ function setPointer(event, down) {
 	event.stopPropagation()
 }
 
-function clamp(v, min, max) {
-	return M.max(min, M.min(max, v))
-}
-
 function lookAt(x, z) {
-	x = clamp(x, -10, 10)
-	z = clamp(z, -10, 10)
+	lookX = x
+	lookZ = z
 
-	translate(viewMat, idMat, x + camPos[0], camPos[1], z + camPos[2])
+	translate(viewMat, idMat, lookX + camPos[0], camPos[1], lookZ + camPos[2])
 	rotate(viewMat, viewMat, -.9, 1, 0, 0)
 	invert(viewMat, viewMat)
 
-	translate(lightViewMat, idMat, x, 35, z)
+	translate(lightViewMat, idMat, lookX, 35, lookZ)
 	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
 	invert(lightViewMat, lightViewMat)
 	lightDirection[0] = lightViewMat[2]
 	lightDirection[1] = lightViewMat[6]
 	lightDirection[2] = lightViewMat[10]
+}
+
+function clamp(v, min, max) {
+	return M.max(min, M.min(max, v))
+}
+
+function clampView(v, minMax) {
+	return clamp(v, M.min(-minMax, -moveBound), M.max(minMax, moveBound))
 }
 
 function dragCamera() {
@@ -1742,7 +1772,10 @@ function dragCamera() {
 		d = dx*dx + dy*dy,
 		f = 8
 	if (d > .001) {
-		lookAt(drag.cx + dx * f, drag.cz + dy * f)
+		lookAt(
+			clampView(drag.cx + dx * f, lookX),
+			clampView(drag.cz + dy * f, lookZ)
+		)
 		drag.dragging = true
 	}
 }
