@@ -1799,6 +1799,10 @@ function pointerCancel(event) {
 }
 
 function pointerUp(event) {
+	// because onmouseup will still fire after onmouseout
+	if (pointersLength < 1) {
+		return
+	}
 	setPointer(event, false)
 	if (pointersLength > 0) {
 		startDrag()
