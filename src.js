@@ -215,25 +215,6 @@ function rotate(out, a, rad, x, y, z) {
 	}
 }
 
-function scale(out, a, x, y, z) {
-	out[0] = a[0] * x
-	out[1] = a[1] * x
-	out[2] = a[2] * x
-	out[3] = a[3] * x
-	out[4] = a[4] * y
-	out[5] = a[5] * y
-	out[6] = a[6] * y
-	out[7] = a[7] * y
-	out[8] = a[8] * z
-	out[9] = a[9] * z
-	out[10] = a[10] * z
-	out[11] = a[11] * z
-	out[12] = a[12]
-	out[13] = a[13]
-	out[14] = a[14]
-	out[15] = a[15]
-}
-
 function translate(out, a, x, y, z) {
 	if (a === out) {
 		out[12] = a[0] * x + a[4] * y + a[8] * z + a[12]
@@ -491,12 +472,12 @@ function createModel(vertices, indicies, uvs) {
 	return model
 }
 
-function createGround() {
+function createGround(size) {
 	return createModel([
-		-1,0,1,
-		1,0,1,
-		-1,0,-1,
-		1,0,-1
+		-size,0,size,
+		size,0,size,
+		-size,0,-size,
+		size,0,-size
 	],[
 		0,1,3,
 		0,3,2
@@ -1990,10 +1971,9 @@ function createEntities() {
 
 	const mat = new FA(idMat)
 
-	scale(mat, mat, groundSize, 1, groundSize)
 	ground = {
 		mat: new FA(mat),
-		model: createGround(),
+		model: createGround(groundSize),
 		color: [.89, .77, .52, 1]
 	}
 
