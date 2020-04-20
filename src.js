@@ -1860,7 +1860,7 @@ function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
 		cm = new FA(idMat),
 		bm = new FA(idMat)
 	translate(bm, idMat, x, 0, z)
-	selectable && rotate(bm, bm, M.PI, 0, 1, 0)
+	rotate(bm, bm, (M.random() * .6 - .3) + (selectable ? M.PI : 0), 0, 1, 0)
 	const head = {
 		mat: hm,
 		model: models.head,
