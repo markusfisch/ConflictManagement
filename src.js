@@ -1517,9 +1517,9 @@ function calculateEnemyTurn() {
 		}
 	}
 	if (alive > 0) {
-		// no target in sight, so pick some random enemy and make him
-		// do something (silly)
 		if (!agent && (agent = getRandomEnemy())) {
+			// no target in sight, so pick some random enemy and make
+			// him do something (silly)
 			const am = agent.mat,
 				ax = am[12],
 				az = am[14],
@@ -1638,63 +1638,63 @@ function moveTo(e, x, z) {
 		dx = x - mx,
 		dz = z - mz,
 		d = dx*dx + dz*dz
-	if (d > .1) {
-		const forward = M.atan2(mat[10], mat[8]),
-				bearing = M.atan2(dz, dx),
-				a = substractAngles(bearing, forward)
-		if (M.abs(a) > .1) {
-			const obstacle = getBlockableNear(mx, mz, 3, e)
-			rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
-			multiply(cacheMat, mat, cacheMat)
-		} else {
-			cacheMat.set(mat)
+	if (d < .1) {
+		endTurn(e)
+		return
+	}
+	const forward = M.atan2(mat[10], mat[8]),
+			bearing = M.atan2(dz, dx),
+			a = substractAngles(bearing, forward)
+	if (M.abs(a) > .1) {
+		const obstacle = getBlockableNear(mx, mz, 3, e)
+		rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
+		multiply(cacheMat, mat, cacheMat)
+	} else {
+		cacheMat.set(mat)
+	}
+	translate(cacheMat, cacheMat, 0, 0, .1)
+	const nx = cacheMat[12],
+		nz = cacheMat[14]
+	let blockable, attackable
+	for (let i = blockablesLength; i-- && !blockable && !attackable;) {
+		const b = blockables[i]
+		if (b == e) {
+			continue
 		}
-		translate(cacheMat, cacheMat, 0, 0, .1)
-		const nx = cacheMat[12],
-			nz = cacheMat[14]
-		let blockable, attackable
-		for (let i = blockablesLength; i-- && !blockable && !attackable;) {
-			const b = blockables[i]
-			if (b == e) {
-				continue
-			}
-			const bm = b.mat,
-				bx = bm[12],
-				bz = bm[14],
-				bdx = nx - bx,
-				bdz = nz - bz,
-				bd = bdx*bdx + bdz*bdz
-			if (!blockable && bd < .5) {
-				blockable = b
-			}
-			if (!attackable && bd < attackRange &&
-					b.selectable != e.selectable && b.life > 0) {
-				attackable = b
-			}
+		const bm = b.mat,
+			bx = bm[12],
+			bz = bm[14],
+			bdx = nx - bx,
+			bdz = nz - bz,
+			bd = bdx*bdx + bdz*bdz
+		if (!blockable && bd < .5) {
+			blockable = b
 		}
-		if (attackable) {
-			moveMade = true
-			mat.set(cacheMat)
-			attack(e, attackable)
-			return
+		if (!attackable && bd < attackRange &&
+				b.selectable != e.selectable && b.life > 0) {
+			attackable = b
 		}
-		if (blockable) {
-			if (moveMade) {
-				endTurn(e)
-			} else {
-				e.update = nop
-			}
-			return
-		}
+	}
+	if (attackable) {
 		moveMade = true
 		mat.set(cacheMat)
-		if (enemyTurn) {
-			lookAt(cacheMat[12], cacheMat[14])
-		}
-		e.walk()
-	} else {
-		endTurn(e)
+		attack(e, attackable)
+		return
 	}
+	if (blockable) {
+		if (moveMade) {
+			endTurn(e)
+		} else {
+			e.update = nop
+		}
+		return
+	}
+	moveMade = true
+	mat.set(cacheMat)
+	if (enemyTurn) {
+		lookAt(cacheMat[12], cacheMat[14])
+	}
+	e.walk()
 }
 
 function setPointer(event, down) {
@@ -1787,22 +1787,22 @@ function pointerUp(event) {
 	setPointer(event, false)
 	if (pointersLength > 0) {
 		startDrag()
-	} else {
-		if (!drag.dragging && !enemyTurn && !moveMade && !gameOver &&
-				getGroundSpot(pointerSpot, pointersX[0], pointersY[0])) {
-			const x = -pointerSpot[0],
-				z = pointerSpot[2],
-				e = getSelectableNear(x, z)
-			if (e) {
-				selected = e
-				setMarker(e.mat)
-			} else if (selected) {
-				setTarget(selected, x, z)
-				selected.update = moveToTarget
-			}
-		}
-		stopDrag()
+		return
 	}
+	if (!drag.dragging && !enemyTurn && !moveMade && !gameOver &&
+			getGroundSpot(pointerSpot, pointersX[0], pointersY[0])) {
+		const x = -pointerSpot[0],
+			z = pointerSpot[2],
+			e = getSelectableNear(x, z)
+		if (e) {
+			selected = e
+			setMarker(e.mat)
+		} else if (selected) {
+			setTarget(selected, x, z)
+			selected.update = moveToTarget
+		}
+	}
+	stopDrag()
 }
 
 function pointerMove(event) {
