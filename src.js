@@ -1369,7 +1369,7 @@ function getGroundSpot(out, nx, ny) {
 }
 
 function moveToTarget() {
-	moveTo(this, this.targetX, this.targetZ)
+	moveUnitTo(this, this.targetX, this.targetZ)
 }
 
 function moveViewAtMe() {
@@ -1631,7 +1631,7 @@ function substractAngles(a, b) {
 	return d > M.PI ? d - M.TAU : d
 }
 
-function moveTo(e, x, z) {
+function moveUnitTo(e, x, z) {
 	const mat = e.mat,
 		mx = mat[12],
 		mz = mat[14],
