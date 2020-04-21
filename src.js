@@ -2019,6 +2019,7 @@ function createEntities() {
 		firstRow = 4,
 		secondRow = 7
 
+	// add player units
 	for (let o = playerLength >> 1, x = -o, z = firstRow, i = 0;
 			i < playerLength && x <= o; ++x, ++i) {
 		blockables.push(createUnit(x * 3, z + (x & 1 ? secondRow : 0),
@@ -2028,6 +2029,7 @@ function createEntities() {
 	selected = blockables[blockables.length >> 1]
 	setMarker(selected.mat)
 
+	// add enemy units
 	for (let o = enemyLength >> 1, x = -o, z = -firstRow, i = 0;
 			i < enemyLength && x <= o; ++x, ++i) {
 		blockables.push(createUnit(x * 3, z + (x & 1 ? -secondRow : 0),
