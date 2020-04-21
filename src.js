@@ -1262,8 +1262,11 @@ function drawGround(setColor) {
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
 		range = (selected.range + attackRange) * groundFactor
 		for (let i = 0, o = 0; i < blockablesLength; ++i) {
-			const b = blockables[i],
-				bm = b.mat
+			const b = blockables[i]
+			if (b.walk && b.life < 1) {
+				continue
+			}
+			const bm = b.mat
 			blockPositions[o++] = (bm[12] + groundSize) * groundFactor
 			blockPositions[o++] = (bm[14] + groundSize) * groundFactor
 			blockPositions[o++] = b.life
@@ -1414,7 +1417,7 @@ function dist(m, x, z) {
 function getBlockableNear(x, z, sqr, ignore) {
 	for (let i = 0; i < blockablesLength; ++i) {
 		const e = blockables[i]
-		if (e != ignore && dist(e.mat, x, z) < sqr) {
+		if (e != ignore && e.life > 0 && dist(e.mat, x, z) < sqr) {
 			return e
 		}
 	}
@@ -1454,7 +1457,7 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 		minD = 1000
 	for (let i = 0; i < blockablesLength; ++i) {
 		const b = blockables[i]
-		if (b == ignore) {
+		if (b == ignore || b.life < 1) {
 			continue
 		}
 		const bm = b.mat,
@@ -1657,7 +1660,7 @@ function moveUnitTo(e, x, z) {
 	let blockable, attackable
 	for (let i = blockablesLength; i-- && !blockable && !attackable;) {
 		const b = blockables[i]
-		if (b == e) {
+		if (b == e || b.life < 1) {
 			continue
 		}
 		const bm = b.mat,
@@ -1669,8 +1672,7 @@ function moveUnitTo(e, x, z) {
 		if (!blockable && bd < .5) {
 			blockable = b
 		}
-		if (!attackable && bd < attackRange &&
-				b.selectable != e.selectable && b.life > 0) {
+		if (!attackable && bd < attackRange && b.selectable != e.selectable) {
 			attackable = b
 		}
 	}
