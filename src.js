@@ -1522,12 +1522,11 @@ function calculateEnemyTurn() {
 			// him do something (silly)
 			const am = agent.mat,
 				ax = am[12],
-				az = am[14],
-				half = moveBound / 2
+				az = am[14]
 			let tx, tz, tries = 0
 			do {
-				tx = ax + M.random() * moveBound - half
-				tz = az + M.random() * moveBound - half
+				tx = M.random() * moveBound * 2 - moveBound
+				tz = M.random() * moveBound * 2 - moveBound
 			} while (tries++ < 10 &&
 				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
 					getBlockableNear(tx, tz, 4, agent)))
