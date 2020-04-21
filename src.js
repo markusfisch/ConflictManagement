@@ -1824,7 +1824,8 @@ function resize() {
 		horizon)
 }
 
-function addMan(x, z, models, skinColor, dressColor, clubColor, selectable) {
+function createUnit(x, z, models, skinColor, dressColor, clubColor,
+		selectable) {
 	const feetDist = .23,
 		legOffset = .6,
 		armDist = .45,
@@ -2019,7 +2020,7 @@ function createEntities() {
 
 	for (let o = playerLength >> 1, x = -o, z = firstRow, i = 0;
 			i < playerLength && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 3, z + (x & 1 ? secondRow : 0),
+		blockables.push(createUnit(x * 3, z + (x & 1 ? secondRow : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
 
@@ -2028,7 +2029,7 @@ function createEntities() {
 
 	for (let o = enemyLength >> 1, x = -o, z = -firstRow, i = 0;
 			i < enemyLength && x <= o; ++x, ++i) {
-		blockables.push(addMan(x * 3, z + (x & 1 ? -secondRow : 0),
+		blockables.push(createUnit(x * 3, z + (x & 1 ? -secondRow : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
