@@ -1744,7 +1744,7 @@ function clamp(v, min, max) {
 }
 
 function clampView(v, minMax) {
-	return clamp(v, M.min(-minMax, -moveBound), M.max(minMax, moveBound))
+	return clamp(v, M.min(minMax, -moveBound), M.max(minMax, moveBound))
 }
 
 function dragCamera() {
