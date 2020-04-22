@@ -1260,7 +1260,7 @@ function drawGround(setColor) {
 		const m = selected.mat
 		playerPosition[0] = (m[12] + groundSize) * groundFactor
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
-		range = (selected.range + attackRange) * groundFactor
+		range = selected.range * groundFactor
 		for (let i = 0, o = 0; i < nentities; ++i) {
 			const b = entities[i],
 				bm = b.mat
