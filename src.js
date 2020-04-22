@@ -1530,9 +1530,10 @@ function calculateEnemyTurn() {
 			do {
 				tx = M.random() * moveBound * 2 - moveBound
 				tz = M.random() * moveBound * 2 - moveBound
-			} while (tries++ < 10 &&
-				(getFirstBlockableFrom(ax, az, tx, tz, agent) ||
-					getBlockableNear(tx, tz, 4, agent)))
+			} while (tries++ < 10 && (
+				getFirstBlockableFrom(ax, az, tx, tz, agent) ||
+				getBlockableNear(tx, tz, 4, agent)
+			))
 			setTarget(agent, tx, tz)
 		}
 		agent.update = moveViewAtMe
