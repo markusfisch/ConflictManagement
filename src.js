@@ -1008,7 +1008,7 @@ varying vec4 shadowPos;
 uniform sampler2D groundTexture;
 uniform float range;
 uniform vec2 playerPosition;
-uniform vec3 blockPositions[${blockablesLength}];
+uniform vec3 blocks[${nentities}];
 varying vec2 st;
 #endif
 
@@ -1028,8 +1028,8 @@ float unblocked(vec2 center, float dist) {
 	vec2 p = st - center;
 	float a = atan(p.y, p.x);
 	float f = 1.;
-	for (int i = 0; i < ${blockablesLength}; ++i) {
-		p = blockPositions[i].xy;
+	for (int i = 0; i < ${nentities}; ++i) {
+		p = blocks[i].xy;
 		float beyond = step(dist, distance(center, p));
 		p -= center;
 		float dir = step(.1, abs(atan(p.y, p.x) - a));
@@ -1051,8 +1051,8 @@ void main() {
 	f = step(d, range) * unblocked(playerPosition, d);
 	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
 
-	for (int i = ${playerLength}; i < ${playerLength + enemyLength}; ++i) {
-		vec3 bp = blockPositions[i];
+	for (int i = ${nplayers}; i < ${nplayers + nenemies}; ++i) {
+		vec3 bp = blocks[i];
 		vec2 p = bp.xy * min(bp.z, 1.);
 		d = distance(p, st);
 		f = step(d, range) * unblocked(p, d);
@@ -1090,7 +1090,7 @@ void main() {
 	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'playerPosition', 'blockPositions[0]', 'range'])
+			'groundTexture', 'playerPosition', 'blocks[0]', 'range'])
 
 	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
 	cacheLocations(entityProgram,
@@ -1123,8 +1123,8 @@ const D = document,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
-	playerLength = 5,
-	enemyLength = 7,
+	nplayers = 5,
+	nenemies = 7,
 	playerPosition = [-1, -1],
 	skyColor = [0, .2, .8, 1],
 	camPos = [0, 16, 12],
@@ -1148,12 +1148,12 @@ let shadowBuffer,
 	screenBuffer,
 	screenWidth,
 	screenHeight,
-	pointersLength,
-	entitiesLength,
-	entities = [],
-	blockablesLength,
-	blockables = [],
-	blockPositions,
+	npointers,
+	ndrawables,
+	drawables = [],
+	nentities,
+	entities = [], // drawables that interact with each other
+	blocks,
 	ground,
 	lookX,
 	lookZ,
@@ -1224,9 +1224,9 @@ function drawEntities(setColor, attribs, uniforms) {
 	const matsLoc = uniforms['mats[0]']
 	gl.enableVertexAttribArray(attribs.vertex)
 	gl.enableVertexAttribArray(attribs.normal)
-	for (let i = entitiesLength; i--;) {
+	for (let i = ndrawables; i--;) {
 		// draw may be nop so there's no need for a conditional
-		entities[i].draw(setColor, attribs, uniforms, matsLoc)
+		drawables[i].draw(setColor, attribs, uniforms, matsLoc)
 	}
 	gl.disableVertexAttribArray(attribs.vertex)
 	gl.disableVertexAttribArray(attribs.normal)
@@ -1261,17 +1261,17 @@ function drawGround(setColor) {
 		playerPosition[0] = (m[12] + groundSize) * groundFactor
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
 		range = (selected.range + attackRange) * groundFactor
-		for (let i = 0, o = 0; i < blockablesLength; ++i) {
-			const b = blockables[i],
+		for (let i = 0, o = 0; i < nentities; ++i) {
+			const b = entities[i],
 				bm = b.mat
 			if (b.timeOfDeath) {
-				blockPositions[o++] = -1000
-				blockPositions[o++] = -1000
-				blockPositions[o++] = 0
+				blocks[o++] = -1000
+				blocks[o++] = -1000
+				blocks[o++] = 0
 			} else {
-				blockPositions[o++] = (bm[12] + groundSize) * groundFactor
-				blockPositions[o++] = (bm[14] + groundSize) * groundFactor
-				blockPositions[o++] = b.life
+				blocks[o++] = (bm[12] + groundSize) * groundFactor
+				blocks[o++] = (bm[14] + groundSize) * groundFactor
+				blocks[o++] = b.life
 			}
 		}
 	} else {
@@ -1279,7 +1279,7 @@ function drawGround(setColor) {
 		range = -1
 	}
 	gl.uniform2fv(uniforms['playerPosition'], playerPosition)
-	gl.uniform3fv(uniforms['blockPositions[0]'], blockPositions)
+	gl.uniform3fv(uniforms['blocks[0]'], blocks)
 	gl.uniform1f(uniforms.range, range)
 
 	gl.enableVertexAttribArray(attribs.vertex)
@@ -1331,8 +1331,8 @@ function update() {
 	if (gameOver && now - gameOver > 10000) {
 		createEntities()
 	}
-	for (let i = entitiesLength; i--;) {
-		entities[i].update()
+	for (let i = ndrawables; i--;) {
+		drawables[i].update()
 	}
 }
 
@@ -1418,8 +1418,8 @@ function dist(m, x, z) {
 }
 
 function getBlockableNear(x, z, sqr, ignore) {
-	for (let i = 0; i < blockablesLength; ++i) {
-		const e = blockables[i]
+	for (let i = 0; i < nentities; ++i) {
+		const e = entities[i]
 		if (e != ignore && !e.timeOfDeath && dist(e.mat, x, z) < sqr) {
 			return e
 		}
@@ -1427,8 +1427,8 @@ function getBlockableNear(x, z, sqr, ignore) {
 }
 
 function getSelectableNear(x, z) {
-	for (let i = 0; i < playerLength; ++i) {
-		const e = blockables[i]
+	for (let i = 0; i < nplayers; ++i) {
+		const e = entities[i]
 		if (e.selectable && dist(e.mat, x, z) < .75) {
 			return e
 		}
@@ -1458,8 +1458,8 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 	let blockable,
 		maxD = rx*rx + rz*rz,
 		minD = 1000
-	for (let i = 0; i < blockablesLength; ++i) {
-		const b = blockables[i]
+	for (let i = 0; i < nentities; ++i) {
+		const b = entities[i]
 		if (b == ignore || b.timeOfDeath) {
 			continue
 		}
@@ -1477,9 +1477,9 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 }
 
 function getRandomEnemy() {
-	let r = M.random() * enemyLength | 0
-	for (let i = 0; i < enemyLength; ++i) {
-		const b = blockables[playerLength + (r++ % enemyLength)]
+	let r = M.random() * nenemies | 0
+	for (let i = 0; i < nenemies; ++i) {
+		const b = entities[nplayers + (r++ % nenemies)]
 		if (b.life > 0) {
 			return b
 		}
@@ -1490,8 +1490,8 @@ function calculateEnemyTurn() {
 	let alive = 0,
 		agent,
 		minD = 1000
-	for (let i = playerLength, l = i + enemyLength; i < l; ++i) {
-		const e = blockables[i]
+	for (let i = nplayers, l = i + nenemies; i < l; ++i) {
+		const e = entities[i]
 		if (e.life < 1) {
 			continue
 		}
@@ -1499,8 +1499,8 @@ function calculateEnemyTurn() {
 		const em = e.mat,
 			ex = em[12],
 			ez = em[14]
-		for (let j = 0; j < playerLength; ++j) {
-			const p = blockables[j]
+		for (let j = 0; j < nplayers; ++j) {
+			const p = entities[j]
 			if (p.life < 1) {
 				continue
 			}
@@ -1560,7 +1560,7 @@ function endTurn(e) {
 
 function getNextAliveUnit(from, to) {
 	for (let i = from; i < to; ++i) {
-		const b = blockables[i]
+		const b = entities[i]
 		if (b.life > 0) {
 			return b
 		}
@@ -1569,7 +1569,7 @@ function getNextAliveUnit(from, to) {
 
 function cheerWinners(from, to) {
 	for (let i = from; i < to; ++i) {
-		const b = blockables[i]
+		const b = entities[i]
 		if (b.life > 0) {
 			b.lockMat.set(b.mat)
 			b.update = b.cheer
@@ -1594,10 +1594,10 @@ function hit(attacker, victim) {
 		let from, to
 		if (victim.selectable) {
 			from = 0
-			to = playerLength
+			to = nplayers
 		} else {
-			from = playerLength
-			to = from + enemyLength
+			from = nplayers
+			to = from + nenemies
 		}
 		kill(victim)
 		const next = getNextAliveUnit(from, to)
@@ -1614,10 +1614,10 @@ function hit(attacker, victim) {
 			gameOver = now
 			if (attacker.selectable) {
 				from = 0
-				to = playerLength
+				to = nplayers
 			} else {
-				from = playerLength
-				to = from + enemyLength
+				from = nplayers
+				to = from + nenemies
 			}
 			cheerWinners(from, to)
 			return
@@ -1662,8 +1662,8 @@ function moveUnitTo(e, x, z) {
 	const nx = cacheMat[12],
 		nz = cacheMat[14]
 	let blockable, attackable
-	for (let i = blockablesLength; i-- && !blockable && !attackable;) {
-		const b = blockables[i]
+	for (let i = nentities; i-- && !blockable && !attackable;) {
+		const b = entities[i]
 		if (b == e) {
 			continue
 		}
@@ -1706,22 +1706,22 @@ function moveUnitTo(e, x, z) {
 function setPointer(event, down) {
 	const touches = event.touches
 	if (touches) {
-		pointersLength = touches.length
-		for (let i = pointersLength; i--;) {
+		npointers = touches.length
+		for (let i = npointers; i--;) {
 			const t = touches[i]
 			pointersX[i] = t.pageX
 			pointersY[i] = t.pageY
 		}
 	} else if (!down) {
-		pointersLength = 0
+		npointers = 0
 	} else {
-		pointersLength = 1
+		npointers = 1
 		pointersX[0] = event.pageX
 		pointersY[0] = event.pageY
 	}
 
 	// map to WebGL coordinates
-	for (let i = pointersLength; i--;) {
+	for (let i = npointers; i--;) {
 		pointersX[i] = (2 * pointersX[i]) / screenWidth - 1
 		pointersY[i] = 1 - (2 * pointersY[i]) / screenHeight
 	}
@@ -1787,11 +1787,11 @@ function pointerCancel(event) {
 
 function pointerUp(event) {
 	// because onmouseup will still fire after onmouseout
-	if (pointersLength < 1) {
+	if (npointers < 1) {
 		return
 	}
 	setPointer(event, false)
-	if (pointersLength > 0) {
+	if (npointers > 0) {
 		startDrag()
 		return
 	}
@@ -1812,8 +1812,8 @@ function pointerUp(event) {
 }
 
 function pointerMove(event) {
-	setPointer(event, pointersLength)
-	if (pointersLength > 0) {
+	setPointer(event, npointers)
+	if (npointers > 0) {
 		dragCamera()
 	}
 }
@@ -1966,13 +1966,13 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 		}
 	}
 	body.idle()
-	entities.push(head, leftLeg, rightLeg, leftArm, rightArm, club, body)
+	drawables.push(head, leftLeg, rightLeg, leftArm, rightArm, club, body)
 	return body
 }
 
 function createEntities() {
+	drawables = []
 	entities = []
-	blockables = []
 	drag.dragging = false
 	gameOver = moveMade = enemyTurn = false
 
@@ -1985,7 +1985,7 @@ function createEntities() {
 	}
 
 	translate(mat, idMat, 0, -1, 0)
-	entities.push(cross = {
+	drawables.push(cross = {
 		mat: new FA(mat),
 		model: createCross(),
 		color: [1, 1, 1, 1],
@@ -1997,7 +1997,7 @@ function createEntities() {
 		}
 	})
 
-	entities.push(marker = {
+	drawables.push(marker = {
 		mat: new FA(idMat),
 		model: createMarker(),
 		color: [1, 1, 1, 1],
@@ -2025,19 +2025,20 @@ function createEntities() {
 		secondRow = 7
 
 	// add player units
-	for (let o = playerLength >> 1, x = -o, z = firstRow, i = 0;
-			i < playerLength && x <= o; ++x, ++i) {
-		blockables.push(createUnit(x * 3, z + (x & 1 ? secondRow : 0),
+	for (let o = nplayers >> 1, x = -o, z = firstRow, i = 0;
+			i < nplayers && x <= o; ++x, ++i) {
+		entities.push(createUnit(x * 3, z + (x & 1 ? secondRow : 0),
 			models, skinColor, playerColor, clubColor, true))
 	}
 
-	selected = blockables[blockables.length >> 1]
+	// select the unit in the middle
+	selected = entities[entities.length >> 1]
 	setMarker(selected.mat)
 
 	// add enemy units
-	for (let o = enemyLength >> 1, x = -o, z = -firstRow, i = 0;
-			i < enemyLength && x <= o; ++x, ++i) {
-		blockables.push(createUnit(x * 3, z + (x & 1 ? -secondRow : 0),
+	for (let o = nenemies >> 1, x = -o, z = -firstRow, i = 0;
+			i < nenemies && x <= o; ++x, ++i) {
+		entities.push(createUnit(x * 3, z + (x & 1 ? -secondRow : 0),
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
@@ -2047,7 +2048,7 @@ function createEntities() {
 	const rockModel = createRock(),
 		rockColor = [.33, .27, .12, 1]
 	for (let i = 20; i--;) {
-		blockablesLength = blockables.length
+		nentities = entities.length
 		let x, z
 		do {
 			x = M.random() * 30 - 15
@@ -2060,18 +2061,18 @@ function createEntities() {
 			model: rockModel,
 			color: rockColor
 		}
+		drawables.push(blockable)
 		entities.push(blockable)
-		blockables.push(blockable)
 	}
 
-	blockablesLength = blockables.length
-	entitiesLength = entities.length
+	nentities = entities.length
+	ndrawables = drawables.length
 
-	blockPositions = new FA(blockablesLength * 3)
+	blocks = new FA(nentities * 3)
 
-	// ensure all entities have mandatory properties set
-	for (let i = entitiesLength; i--;) {
-		const e = entities[i]
+	// ensure all drawables have mandatory properties set
+	for (let i = ndrawables; i--;) {
+		const e = drawables[i]
 		e.update = e.update || nop
 		e.draw = e.draw || drawEntity
 		e.selectable = e.selectable || false
