@@ -1262,14 +1262,17 @@ function drawGround(setColor) {
 		playerPosition[1] = (m[14] + groundSize) * groundFactor
 		range = (selected.range + attackRange) * groundFactor
 		for (let i = 0, o = 0; i < blockablesLength; ++i) {
-			const b = blockables[i]
-			if (b.walk && b.life < 1) {
-				continue
+			const b = blockables[i],
+				bm = b.mat
+			if (b.timeOfDeath) {
+				blockPositions[o++] = -1000
+				blockPositions[o++] = -1000
+				blockPositions[o++] = 0
+			} else {
+				blockPositions[o++] = (bm[12] + groundSize) * groundFactor
+				blockPositions[o++] = (bm[14] + groundSize) * groundFactor
+				blockPositions[o++] = b.life
 			}
-			const bm = b.mat
-			blockPositions[o++] = (bm[12] + groundSize) * groundFactor
-			blockPositions[o++] = (bm[14] + groundSize) * groundFactor
-			blockPositions[o++] = b.life
 		}
 	} else {
 		playerPosition[0] = playerPosition[1] = -1
@@ -1417,7 +1420,7 @@ function dist(m, x, z) {
 function getBlockableNear(x, z, sqr, ignore) {
 	for (let i = 0; i < blockablesLength; ++i) {
 		const e = blockables[i]
-		if (e != ignore && e.life > 0 && dist(e.mat, x, z) < sqr) {
+		if (e != ignore && !e.timeOfDeath && dist(e.mat, x, z) < sqr) {
 			return e
 		}
 	}
@@ -1457,7 +1460,7 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 		minD = 1000
 	for (let i = 0; i < blockablesLength; ++i) {
 		const b = blockables[i]
-		if (b == ignore || b.life < 1) {
+		if (b == ignore || b.timeOfDeath) {
 			continue
 		}
 		const bm = b.mat,
@@ -1661,7 +1664,7 @@ function moveUnitTo(e, x, z) {
 	let blockable, attackable
 	for (let i = blockablesLength; i-- && !blockable && !attackable;) {
 		const b = blockables[i]
-		if (b == e || b.life < 1) {
+		if (b == e) {
 			continue
 		}
 		const bm = b.mat,
@@ -1670,10 +1673,11 @@ function moveUnitTo(e, x, z) {
 			bdx = nx - bx,
 			bdz = nz - bz,
 			bd = bdx*bdx + bdz*bdz
-		if (!blockable && bd < .5) {
+		if (!blockable && bd < .5 && !b.timeOfDeath) {
 			blockable = b
 		}
-		if (!attackable && bd < attackRange && b.selectable != e.selectable) {
+		if (!attackable && bd < attackRange && b.life > 0 &&
+				b.selectable != e.selectable) {
 			attackable = b
 		}
 	}
@@ -2065,7 +2069,7 @@ function createEntities() {
 
 	blockPositions = new FA(blockablesLength * 3)
 
-	// complete properties
+	// ensure all entities have mandatory properties set
 	for (let i = entitiesLength; i--;) {
 		const e = entities[i]
 		e.update = e.update || nop
