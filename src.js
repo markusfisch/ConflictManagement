@@ -1034,6 +1034,9 @@ float unblocked(vec2 center, float dist) {
 		p -= center;
 		float dir = step(.1, abs(atan(p.y, p.x) - a));
 		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
+		if (f < 1.) {
+			break;
+		}
 	}
 	return f;
 }
