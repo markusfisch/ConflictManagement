@@ -13,5 +13,12 @@ Hold and move to move the view.
 
 Move wisely and use the cover of obstacles to win.
 
+## Build Requirements
+
+[esbuild][esbuild] is used for minification. You can get it with `npm`:
+
+	$ npm install --global esbuild
+
 [js13kgames]: http://js13kgames.com/entries/2019
 [play]: http://hhsw.de/sites/proto/js13k2019/
+[esbuild]: https://github.com/evanw/esbuild

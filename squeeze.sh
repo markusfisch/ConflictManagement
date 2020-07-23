@@ -7,7 +7,7 @@ do
 		SRC=${SRC%%\"*}
 		[ -r "$SRC" ] && {
 			echo '<script>'
-			java -jar closure-compiler/*jar < "$SRC" | fgrep -v '$jscomp'
+			esbuild --minify "$SRC"
 			echo '</script>'
 			continue
 		}
