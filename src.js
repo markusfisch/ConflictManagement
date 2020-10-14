@@ -392,7 +392,7 @@ function createTexture() {
 	return texture
 }
 
-function createFrameBuffer(w, h) {
+function createFrameBuffer(w, h, setter) {
 	const rb = gl.createRenderbuffer()
 	gl.bindRenderbuffer(gl.RENDERBUFFER, rb)
 	gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h)
@@ -412,7 +412,7 @@ function createFrameBuffer(w, h) {
 	gl.bindRenderbuffer(gl.RENDERBUFFER, null)
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-	return [tx, fb]
+	setter(tx, fb)
 }
 
 function createScreenBuffer() {
@@ -2125,16 +2125,14 @@ function init() {
 
 	setOrthogonal(lightProjMat, -20, 20, -20, 20, -35, 35)
 
-	{
-		const buf = createFrameBuffer(offscreenSize, offscreenSize)
-		offscreenTexture = buf[0]
-		offscreenBuffer = buf[1]
-	}
-	{
-		const buf = createFrameBuffer(shadowTextureSize, shadowTextureSize)
-		shadowTexture = buf[0]
-		shadowBuffer = buf[1]
-	}
+	createFrameBuffer(offscreenSize, offscreenSize, function(tx, fb) {
+		offscreenTexture = tx
+		offscreenBuffer = fb
+	})
+	createFrameBuffer(shadowTextureSize, shadowTextureSize, function(tx, fb) {
+		shadowTexture = tx
+		shadowBuffer = fb
+	})
 	screenBuffer = createScreenBuffer()
 
 	createGroundTexture()
