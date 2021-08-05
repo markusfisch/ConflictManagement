@@ -950,7 +950,7 @@ varying float bias;
 void main() {
 	float intensity = max(0., dot(normalize(mat3(mats[2]) * normal),
 		lightDirection));
-	bias = .001 * intensity;
+	bias = .002 * intensity;
 	gl_Position = mats[3] * mats[4] * vec4(vertex, 1.);
 }`, lightFragmentShader = `${precision}
 varying float bias;
