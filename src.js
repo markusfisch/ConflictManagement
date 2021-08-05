@@ -1005,7 +1005,6 @@ varying float z;
 varying vec4 shadowPos;
 
 #ifdef GROUND
-uniform sampler2D groundTexture;
 uniform float range;
 uniform vec2 playerPosition;
 uniform vec3 blocks[${nentities}];
@@ -1047,11 +1046,8 @@ void main() {
 	float fog = z / far;
 	vec4 c = color;
 #ifdef GROUND
-	float f = step(.9, texture2D(groundTexture, st).r);
-	c = f * c + (1. - f) * vec4(.79, .67, .42, 1.);
-
 	float d = distance(playerPosition, st);
-	f = step(d, range) * unblocked(playerPosition, d);
+	float f = step(d, range) * unblocked(playerPosition, d);
 	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
 
 	for (int i = ${nplayers}; i < ${nplayers + nenemies}; ++i) {
@@ -1093,7 +1089,7 @@ void main() {
 	cacheLocations(groundProgram,
 		['vertex', 'normal', 'uv'],
 		['mats[0]', 'lightDirection', 'far', 'sky', 'color', 'shadowTexture',
-			'groundTexture', 'playerPosition', 'blocks[0]', 'range'])
+			'playerPosition', 'blocks[0]', 'range'])
 
 	entityProgram = buildProgram(entityVertexShader, entityFragmentShader)
 	cacheLocations(entityProgram,
@@ -1147,7 +1143,6 @@ let shadowBuffer,
 	shadowTexture,
 	offscreenBuffer,
 	offscreenTexture,
-	groundTexture,
 	screenBuffer,
 	screenWidth,
 	screenHeight,
@@ -1252,10 +1247,6 @@ function drawGround(setColor) {
 		model = ground.model
 
 	setEntityUniforms(uniforms)
-
-	gl.activeTexture(gl.TEXTURE1)
-	gl.bindTexture(gl.TEXTURE_2D, groundTexture)
-	gl.uniform1i(uniforms.groundTexture, 1)
 
 	let range
 	if (selected && selected.update == nop && !enemyTurn) {
@@ -2084,42 +2075,6 @@ function createEntities() {
 	createPrograms()
 }
 
-function createGroundTexture() {
-	const size = 1024,
-		canvas = D.createElement('canvas'),
-		ctx = canvas.getContext('2d')
-	canvas.width = canvas.height = size
-	ctx.fillStyle = '#fff'
-	ctx.fillRect(0, 0, size, size)
-	ctx.fillStyle = ctx.strokeStyle = '#000'
-	ctx.lineJoin = 'bevel';
-	function drawRoundRect(x, y, width, height, radius) {
-		const r2 = radius / 2
-		x += r2
-		y += r2
-		width -= radius
-		height -= radius
-		ctx.lineWidth = radius;
-		ctx.strokeRect(x, y, width, height)
-		ctx.fillRect(x, y, width, height)
-	}
-	const min = M.round(size * .025),
-		max = M.round(size * .05)
-	for (let i = 100; i--;) {
-		const x = M.round(M.random() * size),
-			y = M.round(M.random() * size),
-			s = min + M.round(M.random() * max)
-		ctx.save()
-		ctx.translate(x, y)
-		ctx.rotate(M.random() * M.TAU)
-		drawRoundRect(0, 0, s, s, M.round(s * .5))
-		ctx.restore()
-	}
-	groundTexture = createTexture()
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, canvas)
-	gl.bindTexture(gl.TEXTURE_2D, null)
-}
-
 function init() {
 	gl = D.getElementById('Canvas').getContext('webgl')
 
@@ -2135,7 +2090,6 @@ function init() {
 	})
 	screenBuffer = createScreenBuffer()
 
-	createGroundTexture()
 	createEntities()
 
 	gl.enable(gl.DEPTH_TEST)
