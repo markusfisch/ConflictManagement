@@ -1136,7 +1136,7 @@ const D = document,
 	groundFactor = .5 / groundSize,
 	moveBound = 10,
 	attackRange = 1,
-	offscreenSize = 256,
+	offscreenSize = 512,
 	shadowTextureSize = 1024
 
 let shadowBuffer,
