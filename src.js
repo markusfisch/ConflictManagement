@@ -2027,8 +2027,6 @@ function createEntities() {
 			models, skinColor, enemyColor, clubColor, false))
 	}
 
-	lookAt(0, 0)
-
 	// add some obstacles
 	const rockModel = createRock(),
 		rockColor = [.33, .27, .12, 1]
@@ -2064,6 +2062,7 @@ function createEntities() {
 	}
 
 	createPrograms()
+	lookAt(0, 0)
 }
 
 function init() {
