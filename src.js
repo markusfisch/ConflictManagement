@@ -1103,8 +1103,8 @@ const D = document,
 	lightProjMat = new FA(mats.buffer, 192, 16),
 	lightModelViewMat = new FA(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
-	nplayers = 5,
-	nenemies = 7,
+	nplayers = 2,
+	nenemies = 5,
 	playerPosition = [-1, -1],
 	skyColor = [0, .5, .9, 1],
 	camPos = [0, 16, 12],
@@ -2007,7 +2007,7 @@ function createEntities() {
 		playerColor = [1, 1, 1, 1],
 		enemyColor = [.1, .1, .1, 1],
 		firstRow = 4,
-		secondRow = 7
+		secondRow = 2
 
 	// add player units
 	for (let o = nplayers >> 1, x = -o, z = firstRow, i = 0;
