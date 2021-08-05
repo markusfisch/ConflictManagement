@@ -215,6 +215,25 @@ function rotate(out, a, rad, x, y, z) {
 	}
 }
 
+function scale(out, a, x, y, z) {
+	out[0] = a[0] * x
+	out[1] = a[1] * x
+	out[2] = a[2] * x
+	out[3] = a[3] * x
+	out[4] = a[4] * y
+	out[5] = a[5] * y
+	out[6] = a[6] * y
+	out[7] = a[7] * y
+	out[8] = a[8] * z
+	out[9] = a[9] * z
+	out[10] = a[10] * z
+	out[11] = a[11] * z
+	out[12] = a[12]
+	out[13] = a[13]
+	out[14] = a[14]
+	out[15] = a[15]
+}
+
 function translate(out, a, x, y, z) {
 	if (a === out) {
 		out[12] = a[0] * x + a[4] * y + a[8] * z + a[12]
@@ -1412,20 +1431,20 @@ function getBlockableNear(x, z, sqr, ignore) {
 function getSelectableNear(x, z) {
 	for (let i = 0; i < nplayers; ++i) {
 		const e = entities[i]
-		if (e.selectable && dist(e.mat, x, z) < .75) {
+		if (e.selectable && dist(e.mat, x, z) < e.size) {
 			return e
 		}
 	}
 }
 
-function collides(ox, oy, rx, ry, cx, cy) {
-	const dcx = cx - ox,
-		dcy = cy - oy,
-		mag = rx*rx + ry*ry
+function collides(ox, oy, rx, ry, cx, cy, sizeSq) {
+	const mag = rx*rx + ry*ry
 	let px = rx,
 		py = ry
 	if (mag > 0) {
-		const dp = (dcx*rx + dcy*ry) / mag
+		const dcx = cx - ox,
+			dcy = cy - oy,
+			dp = (dcx*rx + dcy*ry) / mag
 		px *= dp
 		py *= dp
 	}
@@ -1434,7 +1453,7 @@ function collides(ox, oy, rx, ry, cx, cy) {
 		dx = nx - cx,
 		dy = ny - cy,
 		d = dx*dx + dy*dy
-	return d < .75 && px*rx + py*ry >= 0
+	return d < sizeSq && px*rx + py*ry >= 0
 }
 
 function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
@@ -1451,7 +1470,7 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 			dz = bm[14] - oz,
 			d = dx*dx + dz*dz
 		if (d <= maxD && d < minD &&
-				collides(ox, oz, rx, rz, bm[12], bm[14])) {
+				collides(ox, oz, rx, rz, bm[12], bm[14], b.size)) {
 			minD = d
 			blockable = b
 		}
@@ -1657,7 +1676,7 @@ function moveUnitTo(e, x, z) {
 				bdx = nx - bx,
 				bdz = nz - bz,
 				bd = bdx*bdx + bdz*bdz
-			if (!blockable && bd < .5 && !b.timeOfDeath) {
+			if (!blockable && bd < b.size && !b.timeOfDeath) {
 				blockable = b
 			}
 			if (!attackable && bd < attackRange && b.life > 0 &&
@@ -2029,20 +2048,23 @@ function createEntities() {
 
 	// add some obstacles
 	const rockModel = createRock(),
-		rockColor = [.33, .27, .12, 1]
-	for (let i = 20; i--;) {
+		rockColor = [.99, .87, .62, 1]
+	for (let i = 128; i--;) {
 		nentities = entities.length
 		let x, z
 		do {
-			x = M.random() * 30 - 15
-			z = M.random() * 30 - 15
+			x = M.random() * 44 - 22
+			z = M.random() * 48 - 28
 		} while (getBlockableNear(x, z, 4))
 		translate(mat, idMat, x, 0, z)
 		rotate(mat, mat, M.random() * M.TAU, 1, 1, 1)
+		const size = 1 + M.random() * 3
+		scale(mat, mat, size, size, size)
 		const blockable = {
 			mat: new FA(mat),
 			model: rockModel,
-			color: rockColor
+			color: rockColor,
+			size: size * .85 // because the rocks aren't really spherical
 		}
 		drawables.push(blockable)
 		entities.push(blockable)
@@ -2059,6 +2081,7 @@ function createEntities() {
 		e.update = e.update || nop
 		e.draw = e.draw || drawEntity
 		e.selectable = e.selectable || false
+		e.size = e.size || .75
 	}
 
 	createPrograms()
