@@ -1022,39 +1022,20 @@ float light() {
 	return res * (.75 + .25 * step(shadowPos.z, depth)) + (1. - res);
 }
 
-#ifdef GROUND
-float unblocked(vec2 center, float dist) {
-	vec2 p = st - center;
-	float a = atan(p.y, p.x);
-	float f = 1.;
-	for (int i = 0; i < ${nentities}; ++i) {
-		p = blocks[i].xy;
-		float beyond = step(dist, distance(center, p));
-		p -= center;
-		float dir = step(.1, abs(atan(p.y, p.x) - a));
-		f = min(beyond + dir + step(abs(p.x) + abs(p.y), .001), f);
-		if (f < 1.) {
-			break;
-		}
-	}
-	return f;
-}
-#endif
-
 void main() {
 	float light = light();
 	float fog = z / far;
 	vec4 c = color;
 #ifdef GROUND
 	float d = distance(playerPosition, st);
-	float f = step(d, range) * unblocked(playerPosition, d);
+	float f = step(d, range);
 	c = mix(c, vec4(.0, .5, .0, 1.), f * .1);
 
 	for (int i = ${nplayers}; i < ${nplayers + nenemies}; ++i) {
 		vec3 bp = blocks[i];
 		vec2 p = bp.xy * min(bp.z, 1.);
 		d = distance(p, st);
-		f = step(d, range) * unblocked(p, d);
+		f = step(d, range);
 		c = mix(c, vec4(.5, .0, .0, 1.), f * .1);
 	}
 #endif
