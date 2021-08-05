@@ -1353,19 +1353,27 @@ function moveToTarget() {
 	moveUnitTo(this, this.targetX, this.targetZ)
 }
 
-function moveViewAtMe() {
-	const em = this.mat,
-		ex = em[12],
-		ez = em[14],
-		dx = ex - lookX,
-		dz = ez - lookZ,
-		d = dx*dx + dz*dz
+function moveViewAtMe(e, nextAction) {
+	const em = e.mat,
+			ex = em[12],
+			ez = em[14],
+			dx = ex - lookX,
+			dz = ez - lookZ,
+			d = dx*dx + dz*dz
 	if (d < .01) {
-		this.update = moveToTarget
+		e.update = nextAction
 	} else {
 		const f = .05 + M.min(.2, 1 / d)
 		lookAt(lookX + dx * f, lookZ + dz * f)
 	}
+}
+
+function moveViewAtMeThenMove() {
+	moveViewAtMe(this, moveToTarget)
+}
+
+function moveViewAtMeThenNop() {
+	moveViewAtMe(this, nop)
 }
 
 function setTarget(e, x, z) {
@@ -1514,7 +1522,7 @@ function calculateEnemyTurn() {
 			))
 			setTarget(agent, tx, tz)
 		}
-		agent.update = moveViewAtMe
+		agent.update = moveViewAtMeThenMove
 	}
 	moveMade = true
 }
@@ -1528,6 +1536,8 @@ function endTurn(e) {
 			enemyTurn = e.selectable
 			if (enemyTurn && !gameOver) {
 				calculateEnemyTurn()
+			} else if (selected != null) {
+				selected.update = moveViewAtMeThenNop
 			}
 		}
 	}
