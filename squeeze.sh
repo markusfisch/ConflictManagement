@@ -2,21 +2,27 @@
 while read -r
 do
 	# embed referenced scripts
-	[[ $REPLY == *\<script* ]] && [[ $REPLY == *src=* ]] && {
+	[[ $REPLY == *\<script\ src=* ]] && {
 		SRC=${REPLY#*src=\"}
 		SRC=${SRC%%\"*}
 		[ -r "$SRC" ] && {
-			echo '<script>'
+			echo -n '<script>'
 			esbuild --minify "$SRC"
-			echo '</script>'
+			echo -n '</script>'
 			continue
 		}
 	}
-	# skip comments
+	# remove comments
 	REPLY=${REPLY%%//*}
-	# skip indent
+	# remove indent
 	REPLY=${REPLY##*$'\t'}
-	# skip empty lines
+	# remove empty lines
 	[ "$REPLY" ] || continue
-	echo "$REPLY"
+	# remove optional blanks
+	echo -n "$REPLY" | sed '
+s/ {/{/g;
+s/, /,/g;
+s/: /:/g;
+s/; /;/g;
+s/;"/"/g;'
 done
