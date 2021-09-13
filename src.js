@@ -76,8 +76,6 @@ function nop() {
 //////////////////////////////////////////////////////////////////////// MATRIX
 ///////////////////// shamelessly stolen from https://github.com/toji/gl-matrix
 
-const M = Math
-
 function invert(out, a) {
 	const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
 		a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
@@ -161,7 +159,7 @@ function multiply(out, a, b) {
 }
 
 function rotate(out, a, rad, x, y, z) {
-	let len = M.sqrt(x * x + y * y + z * z),
+	let len = Math.sqrt(x * x + y * y + z * z),
 		s, c, t,
 		a00, a01, a02, a03,
 		a10, a11, a12, a13,
@@ -170,7 +168,7 @@ function rotate(out, a, rad, x, y, z) {
 		b10, b11, b12,
 		b20, b21, b22
 
-	if (M.abs(len) < .000001) {
+	if (Math.abs(len) < .000001) {
 		return
 	}
 
@@ -179,8 +177,8 @@ function rotate(out, a, rad, x, y, z) {
 	y *= len
 	z *= len
 
-	s = M.sin(rad)
-	c = M.cos(rad)
+	s = Math.sin(rad)
+	c = Math.cos(rad)
 	t = 1 - c
 
 	a00 = a[0]; a01 = a[1]; a02 = a[2]; a03 = a[3]
@@ -320,7 +318,7 @@ function setOrthogonal(out, l, r, b, t, near, far) {
 }
 
 function setPerspective(out, fov, aspect, near, far) {
-	const f = 1 / M.tan(fov), d = near - far
+	const f = 1 / Math.tan(fov), d = near - far
 	out[0] = f / aspect
 	out[1] = 0
 	out[2] = 0
@@ -439,7 +437,7 @@ function createScreenBuffer() {
 	gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
 	gl.bufferData(gl.ARRAY_BUFFER,
 		// vertex and UV coordinates
-		new FA([
+		new Float32Array([
 			-1, 1, 1, 1,
 			-1, -1, 1, 0,
 			1, 1, 0, 1,
@@ -464,7 +462,7 @@ function createModel(vertices, indicies, uvs) {
 		vec2elements = (ncoordinates / 3) << 1,
 		model = {count: indicies.length}
 
-	uvs = uvs || new FA(vec2elements)
+	uvs = uvs || new Float32Array(vec2elements)
 
 	const buffer = [],
 		normals = calculateNormals(vertices, indicies)
@@ -481,7 +479,7 @@ function createModel(vertices, indicies, uvs) {
 
 	model.buffer = gl.createBuffer()
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.buffer)
-	gl.bufferData(gl.ARRAY_BUFFER, new FA(buffer), gl.STATIC_DRAW)
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(buffer), gl.STATIC_DRAW)
 
 	model.indicies = gl.createBuffer()
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indicies)
@@ -1104,23 +1102,20 @@ void main() {
 
 ////////////////////////////////////////////////////////////////////////// GAME
 
-const D = document,
-	W = window,
-	FA = Float32Array,
-	idMat = new FA([
+const idMat = new Float32Array([
 		1, 0, 0, 0,
 		0, 1, 0, 0,
 		0, 0, 1, 0,
 		0, 0, 0, 1]),
-	cacheMat = new FA(16),
-	viewMat = new FA(16),
-	lightViewMat = new FA(16),
-	mats = new FA(80),
-	projMat = new FA(mats.buffer, 0, 16),
-	modelViewMat = new FA(mats.buffer, 64, 16),
-	normalMat = new FA(mats.buffer, 128, 16),
-	lightProjMat = new FA(mats.buffer, 192, 16),
-	lightModelViewMat = new FA(mats.buffer, 256, 16),
+	cacheMat = new Float32Array(16),
+	viewMat = new Float32Array(16),
+	lightViewMat = new Float32Array(16),
+	mats = new Float32Array(80),
+	projMat = new Float32Array(mats.buffer, 0, 16),
+	modelViewMat = new Float32Array(mats.buffer, 64, 16),
+	normalMat = new Float32Array(mats.buffer, 128, 16),
+	lightProjMat = new Float32Array(mats.buffer, 192, 16),
+	lightModelViewMat = new Float32Array(mats.buffer, 256, 16),
 	lightDirection = [0, 0, 0],
 	nplayers = 2,
 	nenemies = 5,
@@ -1163,8 +1158,8 @@ let shadowBuffer,
 	gameOver,
 	now
 
-M.PI2 = M.PI2 || M.PI / 2
-M.TAU = M.TAU || M.PI * 2
+Math.PI2 = Math.PI2 || Math.PI / 2
+Math.TAU = Math.TAU || Math.PI * 2
 
 function drawScreen() {
 	initFrame(screenWidth, screenHeight)
@@ -1360,7 +1355,7 @@ function getGroundSpot(out, nx, ny) {
 		z = cacheMat[2]*cx + cacheMat[6]*cy + -cacheMat[10],
 		len = x*x + y*y + z*z
 	if (len > 0) {
-		len = 1 / M.sqrt(len)
+		len = 1 / Math.sqrt(len)
 	}
 	x *= len
 	y *= len
@@ -1382,7 +1377,7 @@ function moveViewAtMe(e, nextAction) {
 	if (d < .01) {
 		e.update = nextAction
 	} else {
-		const f = .05 + M.min(.2, 1 / d)
+		const f = .05 + Math.min(.2, 1 / d)
 		lookAt(lookX + dx * f, lookZ + dz * f)
 	}
 }
@@ -1404,9 +1399,9 @@ function setTarget(e, x, z) {
 		d = dx*dx + dz*dz,
 		r = e.range
 	if (d > r*r) {
-		const a = M.atan2(dz, dx)
-		x = ex + r * M.cos(a)
-		z = ez + r * M.sin(a)
+		const a = Math.atan2(dz, dx)
+		x = ex + r * Math.cos(a)
+		z = ez + r * Math.sin(a)
 	}
 	e.targetX = x
 	e.targetZ = z
@@ -1479,7 +1474,7 @@ function getFirstBlockableFrom(ox, oz, rx, rz, ignore) {
 }
 
 function getRandomEnemy() {
-	let r = M.random() * nenemies | 0
+	let r = Math.random() * nenemies | 0
 	for (let i = 0; i < nenemies; ++i) {
 		const b = entities[nplayers + (r++ % nenemies)]
 		if (b.life > 0) {
@@ -1509,7 +1504,7 @@ function calculateEnemyTurn() {
 			const pm = p.mat,
 				px = pm[12],
 				pz = pm[14]
-			if (M.abs(px) > moveBound || M.abs(pz) > moveBound) {
+			if (Math.abs(px) > moveBound || Math.abs(pz) > moveBound) {
 				// don't follow targets to the edge of the world ;)
 				continue
 			}
@@ -1533,8 +1528,8 @@ function calculateEnemyTurn() {
 				az = am[14]
 			let tx, tz, tries = 0
 			do {
-				tx = M.random() * moveBound * 2 - moveBound
-				tz = M.random() * moveBound * 2 - moveBound
+				tx = Math.random() * moveBound * 2 - moveBound
+				tz = Math.random() * moveBound * 2 - moveBound
 			} while (tries++ < 10 && (
 				getFirstBlockableFrom(ax, az, tx, tz, agent) ||
 				getBlockableNear(tx, tz, 4, agent)
@@ -1637,8 +1632,8 @@ function attack(attacker, victim) {
 }
 
 function substractAngles(a, b) {
-	const d = ((a - b) + M.TAU) % M.TAU
-	return d > M.PI ? d - M.TAU : d
+	const d = ((a - b) + Math.TAU) % Math.TAU
+	return d > Math.PI ? d - Math.TAU : d
 }
 
 function moveUnitTo(e, x, z) {
@@ -1652,10 +1647,10 @@ function moveUnitTo(e, x, z) {
 		endTurn(e)
 		return
 	}
-	const forward = M.atan2(mat[10], mat[8]),
-			bearing = M.atan2(dz, dx),
+	const forward = Math.atan2(mat[10], mat[8]),
+			bearing = Math.atan2(dz, dx),
 			a = substractAngles(bearing, forward)
-	if (M.abs(a) > .1) {
+	if (Math.abs(a) > .1) {
 		const obstacle = getBlockableNear(mx, mz, 3, e)
 		rotate(cacheMat, idMat, d < 1 || obstacle ? -a : -a * .1, 0, 1, 0)
 		multiply(cacheMat, mat, cacheMat)
@@ -1742,7 +1737,7 @@ function lookAt(x, z) {
 	invert(viewMat, viewMat)
 
 	translate(lightViewMat, idMat, lookX, 35, lookZ)
-	rotate(lightViewMat, lightViewMat, -M.PI2, 1, 0, 0)
+	rotate(lightViewMat, lightViewMat, -Math.PI2, 1, 0, 0)
 	invert(lightViewMat, lightViewMat)
 	lightDirection[0] = lightViewMat[2]
 	lightDirection[1] = lightViewMat[6]
@@ -1750,11 +1745,11 @@ function lookAt(x, z) {
 }
 
 function clamp(v, min, max) {
-	return M.max(min, M.min(max, v))
+	return Math.max(min, Math.min(max, v))
 }
 
 function clampView(v, minMax) {
-	return clamp(v, M.min(minMax, -moveBound), M.max(minMax, moveBound))
+	return clamp(v, Math.min(minMax, -moveBound), Math.max(minMax, moveBound))
 }
 
 function dragCamera() {
@@ -1830,7 +1825,7 @@ function pointerDown(event) {
 function resize() {
 	gl.canvas.width = screenWidth = gl.canvas.clientWidth
 	gl.canvas.height = screenHeight = gl.canvas.clientHeight
-	setPerspective(projMat, M.PI * .125, screenWidth / screenHeight, .1,
+	setPerspective(projMat, Math.PI * .125, screenWidth / screenHeight, .1,
 		horizon)
 }
 
@@ -1840,19 +1835,19 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 		legOffset = .6,
 		armDist = .45,
 		armOffset = 1.35,
-		rotRange = M.PI * .8,
+		rotRange = Math.PI * .8,
 		rotBase = rotRange * .5,
 		attackDuration = 200,
 		deathDuration = 200,
-		hm = new FA(idMat),
-		llm = new FA(idMat),
-		rlm = new FA(idMat),
-		lam = new FA(idMat),
-		ram = new FA(idMat),
-		cm = new FA(idMat),
-		bm = new FA(idMat)
+		hm = new Float32Array(idMat),
+		llm = new Float32Array(idMat),
+		rlm = new Float32Array(idMat),
+		lam = new Float32Array(idMat),
+		ram = new Float32Array(idMat),
+		cm = new Float32Array(idMat),
+		bm = new Float32Array(idMat)
 	translate(bm, idMat, x, 0, z)
-	rotate(bm, bm, (M.random() * .6 - .3) + (selectable ? M.PI : 0), 0, 1, 0)
+	rotate(bm, bm, (Math.random() * .6 - .3) + (selectable ? Math.PI : 0), 0, 1, 0)
 	const head = {
 		mat: hm,
 		model: models.head,
@@ -1884,16 +1879,16 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 		selectable: selectable,
 		life: 1,
 		range: 6,
-		lockMat: new FA(idMat),
+		lockMat: new Float32Array(idMat),
 		die: function() {
 			let t = now - this.timeOfDeath
 			if (t > deathDuration) {
-				rotate(bm, this.lockMat, -M.PI2, 1, 0, 0)
+				rotate(bm, this.lockMat, -Math.PI2, 1, 0, 0)
 				this.update = nop
 				return
 			}
 			t /= deathDuration
-			rotate(bm, this.lockMat, -M.PI2 * t, 1, 0, 0)
+			rotate(bm, this.lockMat, -Math.PI2 * t, 1, 0, 0)
 			hm.set(bm)
 			translate(llm, bm, feetDist, 0, 0)
 			translate(rlm, bm, -feetDist, 0, 0)
@@ -1903,7 +1898,7 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 			translate(cm, cm, 0, -.05, 0)
 		},
 		walk: function() {
-			const t = 1 - M.abs((now * .003) % 2 - 1),
+			const t = 1 - Math.abs((now * .003) % 2 - 1),
 				angle = -rotBase + rotRange * t
 			hm.set(bm)
 			// move legs to pivot
@@ -1934,7 +1929,7 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 			translate(lam, bm, armDist, 0, 0)
 			// move arms to pivot
 			translate(cacheMat, bm, 0, armOffset, 0)
-			const angle = -M.PI + M.PI * (t / attackDuration)
+			const angle = -Math.PI + Math.PI * (t / attackDuration)
 			rotate(ram, cacheMat, angle, 1, 0, 0)
 			translate(ram, ram, -armDist, -armOffset, 0)
 			this.finish()
@@ -1948,8 +1943,8 @@ function createUnit(x, z, models, skinColor, dressColor, clubColor,
 			this.finish()
 		},
 		cheer: function() {
-			const t = 1 - M.abs((now * .004) % 2 - 1),
-				angle = -M.PI + t
+			const t = 1 - Math.abs((now * .004) % 2 - 1),
+				angle = -Math.PI + t
 			translate(bm, this.lockMat, 0, 0, 0)
 			hm.set(bm)
 			translate(llm, bm, feetDist, 0, 0)
@@ -1980,17 +1975,17 @@ function createEntities() {
 	drag.dragging = false
 	gameOver = moveMade = enemyTurn = false
 
-	const mat = new FA(idMat)
+	const mat = new Float32Array(idMat)
 
 	ground = {
-		mat: new FA(mat),
+		mat: new Float32Array(mat),
 		model: createGround(groundSize),
 		color: [.89, .77, .52, 1]
 	}
 
 	translate(mat, idMat, 0, -1, 0)
 	drawables.push(cross = {
-		mat: new FA(mat),
+		mat: new Float32Array(mat),
 		model: createCross(),
 		color: [1, 1, 1, 1],
 		update: function() {
@@ -2002,7 +1997,7 @@ function createEntities() {
 	})
 
 	drawables.push(marker = {
-		mat: new FA(idMat),
+		mat: new Float32Array(idMat),
 		model: createMarker(),
 		color: [1, 1, 1, 1],
 		update: function() {
@@ -2053,15 +2048,15 @@ function createEntities() {
 		nentities = entities.length
 		let x, z
 		do {
-			x = M.random() * 44 - 22
-			z = M.random() * 48 - 28
+			x = Math.random() * 44 - 22
+			z = Math.random() * 48 - 28
 		} while (getBlockableNear(x, z, 4))
 		translate(mat, idMat, x, 0, z)
-		rotate(mat, mat, M.random() * M.TAU, 1, 1, 1)
-		const size = 1 + M.random() * 3
+		rotate(mat, mat, Math.random() * Math.TAU, 1, 1, 1)
+		const size = 1 + Math.random() * 3
 		scale(mat, mat, size, size, size)
 		const blockable = {
-			mat: new FA(mat),
+			mat: new Float32Array(mat),
 			model: rockModel,
 			color: rockColor,
 			size: size * .85 // because the rocks aren't really spherical
@@ -2073,7 +2068,7 @@ function createEntities() {
 	nentities = entities.length
 	ndrawables = drawables.length
 
-	blocks = new FA(nentities * 3)
+	blocks = new Float32Array(nentities * 3)
 
 	// ensure all drawables have mandatory properties set
 	for (let i = ndrawables; i--;) {
@@ -2089,7 +2084,7 @@ function createEntities() {
 }
 
 function init() {
-	gl = D.getElementById('Canvas').getContext('webgl')
+	gl = document.getElementById('Canvas').getContext('webgl')
 
 	setOrthogonal(lightProjMat, -20, 20, -20, 20, -35, 35)
 
@@ -2110,29 +2105,29 @@ function init() {
 	gl.enable(gl.CULL_FACE)
 	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
-	W.onresize = resize
+	window.onresize = resize
 	resize()
 
-	D.onmousedown = pointerDown
-	D.onmousemove = pointerMove
-	D.onmouseup = pointerUp
-	D.onmouseout = pointerCancel
+	document.onmousedown = pointerDown
+	document.onmousemove = pointerMove
+	document.onmouseup = pointerUp
+	document.onmouseout = pointerCancel
 
-	if ('ontouchstart' in D) {
-		D.ontouchstart = pointerDown
-		D.ontouchmove = pointerMove
-		D.ontouchend = pointerUp
-		D.ontouchleave = pointerCancel
-		D.ontouchcancel = pointerCancel
+	if ('ontouchstart' in document) {
+		document.ontouchstart = pointerDown
+		document.ontouchmove = pointerMove
+		document.ontouchend = pointerUp
+		document.ontouchleave = pointerCancel
+		document.ontouchcancel = pointerCancel
 
 		// prevent pinch/zoom on iOS 11
-		D.addEventListener('gesturestart', function(event) {
+		document.addEventListener('gesturestart', function(event) {
 			event.preventDefault()
 		}, false)
-		D.addEventListener('gesturechange', function(event) {
+		document.addEventListener('gesturechange', function(event) {
 			event.preventDefault()
 		}, false)
-		D.addEventListener('gestureend', function(event) {
+		document.addEventListener('gestureend', function(event) {
 			event.preventDefault()
 		}, false)
 	}
@@ -2140,4 +2135,4 @@ function init() {
 	run()
 }
 
-W.onload = init
+window.onload = init
