@@ -1656,45 +1656,45 @@ function moveUnitTo(e, x, z) {
 		multiply(cacheMat, mat, cacheMat)
 	} else {
 		cacheMat.set(mat)
-		translate(cacheMat, cacheMat, 0, 0, .1)
-		const nx = cacheMat[12],
-			nz = cacheMat[14]
-		let blockable, attackable
-		for (let i = nentities; i-- && !blockable && !attackable;) {
-			const b = entities[i]
-			if (b == e) {
-				continue
-			}
-			const bm = b.mat,
-				bx = bm[12],
-				bz = bm[14],
-				bdx = nx - bx,
-				bdz = nz - bz,
-				bd = bdx*bdx + bdz*bdz
-			if (!blockable && bd < b.size && !b.timeOfDeath) {
-				blockable = b
-			}
-			if (!attackable && bd < attackRange && b.life > 0 &&
-					b.selectable != e.selectable) {
-				attackable = b
-			}
-		}
-		if (attackable) {
-			moveMade = true
-			mat.set(cacheMat)
-			attack(e, attackable)
-			return
-		}
-		if (blockable) {
-			if (moveMade) {
-				endTurn(e)
-			} else {
-				e.update = nop
-			}
-			return
-		}
-		moveMade = true
 	}
+	translate(cacheMat, cacheMat, 0, 0, .1)
+	const nx = cacheMat[12],
+		nz = cacheMat[14]
+	let blockable, attackable
+	for (let i = nentities; i-- && !blockable && !attackable;) {
+		const b = entities[i]
+		if (b == e) {
+			continue
+		}
+		const bm = b.mat,
+			bx = bm[12],
+			bz = bm[14],
+			bdx = nx - bx,
+			bdz = nz - bz,
+			bd = bdx*bdx + bdz*bdz
+		if (!blockable && bd < b.size && !b.timeOfDeath) {
+			blockable = b
+		}
+		if (!attackable && bd < attackRange && b.life > 0 &&
+				b.selectable != e.selectable) {
+			attackable = b
+		}
+	}
+	if (attackable) {
+		moveMade = true
+		mat.set(cacheMat)
+		attack(e, attackable)
+		return
+	}
+	if (blockable) {
+		if (moveMade) {
+			endTurn(e)
+		} else {
+			e.update = nop
+		}
+		return
+	}
+	moveMade = true
 	mat.set(cacheMat)
 	if (enemyTurn) {
 		lookAt(cacheMat[12], cacheMat[14])
